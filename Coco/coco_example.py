@@ -5,7 +5,7 @@ import optunahub
 #instance_id = 1 -> the basic version of the function
 #instance_id in range [2, 110] different transformations applied to the basic function
 bbob = optunahub.load_module("benchmarks/bbob")
-sphere2d = bbob.Problem(function_id=1, dimension=2, instance_id=1)
+sphere2d = bbob.Problem(function_id=10, dimension=2, instance_id=1)
 
 study = optuna.create_study(directions=sphere2d.directions)
 study.optimize(sphere2d, n_trials=20)

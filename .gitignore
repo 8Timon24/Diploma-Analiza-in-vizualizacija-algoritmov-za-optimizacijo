@@ -2,3 +2,9 @@
 *.pdf
 venv
 requirements.txt
+*.dat
+*.info
+*.mdat
+*.rdat
+*.tdat
+Coco/exdata/

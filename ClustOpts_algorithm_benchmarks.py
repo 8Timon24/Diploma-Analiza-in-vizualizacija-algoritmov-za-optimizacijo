@@ -3,8 +3,8 @@ from helper_functions import run_benchmarks, get_optimizers_safe, get_suite
 
 if __name__ == "__main__":
     dimensions = [2]
-    function_ids = list(range(1, 2))
-    instance_ids = list(range(1, 2))
+    function_ids = list(range(1, 25))
+    instance_ids = list(range(1, 6))
     seeds = [1, 2, 3, 4, 5]
     #BaseDE, SADE, JADE, SHADE, EnchancedAEO, "SHADE": optimizers["SHADE"], 
     #ModifiedAEO, OriginalAEO, AugmentedAEO, HI_WOA, OriginalWOA
@@ -22,6 +22,6 @@ if __name__ == "__main__":
 
     for j in range(1, 6):
         for i in seeds: 
-            run_benchmarks(suite=suite, observer=observer, optimizers=optimizers_filtered, out_dir=f"outputs_{j}", seed=i, epoch=200, pop_size=50)
+            run_benchmarks(suite=suite, observer=observer, optimizers=optimizers_filtered, out_dir=f"outputs_{j}", seed=i, epoch=20, pop_size=50)
 
 

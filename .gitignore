@@ -8,3 +8,7 @@ requirements.txt
 *.rdat
 *.tdat
 Coco/exdata/
+*.csv
+Coco/ppdata
+__pycache__/
+*.py[cod]

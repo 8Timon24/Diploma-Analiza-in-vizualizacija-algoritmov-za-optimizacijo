@@ -26,6 +26,8 @@ if __name__ == "__main__":
     observer = cocoex.Observer("bbob", f"result_folder:mealpy_bbob_results_{date_time}")
 
     optimizers = get_optimizers_safe()
+    #optimizer_names = list(optimizers.keys())
+    #print(optimizer_names)
     
     #TO CALL JUST ONE OPTIMIZER YOU NEED TO GIVE IT AS A DICTIONARY:
     run_benchmarks(suite, observer, {"DevBBO": optimizers["DevBBO"]}, "output_single", seed=1,  epoch=200, pop_size=50)

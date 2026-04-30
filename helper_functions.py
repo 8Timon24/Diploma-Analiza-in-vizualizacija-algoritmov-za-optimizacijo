@@ -127,7 +127,7 @@ def get_optimizers_safe(verbose=False):
                 except Exception:
                     print(f"~ {name} (registered, requires args)")
 
-    return optimizers
+    return (optimizers, list(optimizers.keys()))
 
 """
 The main function for running benchmarks, suite is the collection of 

@@ -12,3 +12,5 @@ Coco/exdata/
 Coco/ppdata
 __pycache__/
 *.py[cod]
+data
+trash

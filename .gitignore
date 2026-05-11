@@ -14,3 +14,4 @@ __pycache__/
 *.py[cod]
 data
 trash
+testing.py

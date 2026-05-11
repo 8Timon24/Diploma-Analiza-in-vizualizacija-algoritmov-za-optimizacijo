@@ -15,10 +15,10 @@ from utils import *
 # ---------------------------------------------------------------------------
 
 # Dimensions to process
-DIMENSIONS = [2, 5, 10]
+DIMENSIONS = [2]
 
 # Root directory containing cluster distribution files (input)
-CLUSTER_FEATURES_DIR = '../data/clustering_features'
+CLUSTER_FEATURES_DIR = 'data/clustering_features_x_only_10_algorithms_kmeans_2pow_no_init'
 
 # Sub-directory pattern for cluster distributions per dimension
 CLUSTER_DISTRIBUTIONS_SUBDIR = 'cluster_distributions'

@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import mealpy
 
 def get_algorithm_groups():
-    optimizers=mealpy.get_all_optimizers()
+    optimizers=mealpy.get_all_optimizers(verbose=False)
     optimizer_group={}
     for k,v in optimizers.items():
         optimizer_group[k.replace('Original','Base')]=str(v).split('.')[1]

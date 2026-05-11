@@ -17,8 +17,8 @@ for algorithm in os.listdir(base):
             df['run'] = seed
             df['problem_id'] = int(problem_id)      # explicitly set here
             df['instance_id'] = int(instance_id)    # explicitly set here
-            df['iteration'] = range(1, len(df) + 1)  # 1-indexed, so iteration 0 is excluded
-            df['evaluations'] = 1000       # 1 eval per row for dim 2
+            #df['iteration'] = range(1, len(df) + 1)  # 1-indexed, so iteration 0 is excluded
+            #df['evaluations'] = 1000       # 1 eval per row for dim 2
             #print(df.head)
             frames.append(df)
 
@@ -29,7 +29,7 @@ for (pid, iid), group in result.groupby(['problem_id', 'instance_id']):  # adjus
     group.to_csv(f'data/processed/dim_2/F{pid}_I{iid}.csv', compression='zip')
 
 
-#sample = pd.read_csv('data/processed/dim_2/F1_I1.csv', compression='zip', index_col=0)
-#print(sample.head(10))
-#print(sample.columns.tolist())
-#print(sample.shape)
+sample = pd.read_csv('data/processed/dim_2/F1_I1.csv', compression='zip', index_col=0)
+print(sample.head(10))
+print(sample.columns.tolist())
+print(sample.shape)

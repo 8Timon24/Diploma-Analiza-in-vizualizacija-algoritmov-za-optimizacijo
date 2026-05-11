@@ -1,6 +1,7 @@
 from pathlib import Path
 import numpy as np
 import csv
+import pandas as pd
 import os
 import mealpy
 import inspect
@@ -65,16 +66,8 @@ def save_best_solution(filename, alg, problem_id, instance_id, seed, x, y):
 """
 Saves the trajectory given as an array of 3-tuples to a .csv file.
 """
-def save_trajectory(filename, trajectory):
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-
-    with open(filename, mode="w", newline="") as f:
-        writer = csv.writer(f)
-
-        writer.writerow(["x1", "x2", "fitness"])
-
-        for row in trajectory:
-            writer.writerow(row)
+def save_trajectory(path, traj):
+    pd.DataFrame(traj, columns=['x1', 'x2', 'fitness', 'iteration', 'evaluations']).to_csv(path, index=False)
 
 """ 
 Returns all available optimizers in the current mealpy library version. If verbose=True, it also prints them to the console.
@@ -138,7 +131,7 @@ the algorithm. Example:
 -> run_benchmarks(suite, observer, {"DevBBO": optimizers["DevBBO"]}, "output_single", seed=1,  epoch=200, pop_size=50)
 -> run_benchmarks(suite, observer, optimizers, "output_all", seed=2, epoch=200, pop_size=50)
 """
-def run_benchmarks(suite, observer, optimizers, out_dir, seed=1, epoch=100, pop_size=20):
+def run_benchmarks(suite, observer, optimizers, out_dir, seed=1, epoch=100, pop_size=20, charts=False, results=False):
     for name, algo_class in optimizers.items():
         print(f"\n{'='*50}")
         print(f"Running optimizer: {name}")
@@ -174,15 +167,39 @@ def run_benchmarks(suite, observer, optimizers, out_dir, seed=1, epoch=100, pop_
                 x = model.g_best.solution
                 y = model.g_best.target.fitness
 
-                traj = best_trajectory(model)
-                generate_all_charts(model, directory, seed)
-                save_best_solution(f"{out_dir}/results.csv", name, problem.id_function, problem.id_instance, seed, x, y)
+                traj = population_trajectory(model, pop_size)
+                
+                if charts:
+                    generate_all_charts(model, directory, seed)
+                if results:
+                    save_best_solution(f"{out_dir}/results.csv", name, problem.id_function, problem.id_instance, seed, x, y)
+                
                 save_trajectory(f"{directory}/trajectory_{seed}.csv", traj)
                 
                 print(f"  [{name}] {problem.id} | f*={result.target.fitness:.4e} | evals={problem.evaluations}")
 
             except Exception as e:
                 print(f"  [{name}] {problem.id} | FAILED: {e}")
+
+def population_trajectory(model, pop_size):
+    """
+    Returns a list of [x1, x2, fitness, iteration, evaluations] for every agent
+    at every iteration — full population, not just the best.
+    Evaluations are computed as iteration * pop_size since each epoch
+    evaluates exactly pop_size solutions.
+    """
+    trajectory = []
+    for iteration, population in enumerate(model.history.list_population):
+        evals = (iteration + 1) * pop_size  # cumulative evaluations at this epoch
+        for agent in population:
+            trajectory.append([
+                agent.solution[0],
+                agent.solution[1],
+                agent.target.fitness,
+                iteration + 1,
+                evals
+            ])
+    return np.array(trajectory)
 
 """
 Returns a cocoex suite for the parameters which are given as lists of integers:

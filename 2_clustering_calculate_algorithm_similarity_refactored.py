@@ -8,17 +8,20 @@ from sklearn.metrics.pairwise import cosine_similarity
 import seaborn as sns
 import matplotlib.pyplot as plt
 from utils import *
+import argparse
 
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-
-# Dimensions to process
 DIMENSIONS = [2]
-
-# Root directory containing cluster distribution files (input)
-CLUSTER_FEATURES_DIR = 'data/clustering_features_x_only_10_algorithms_kmeans_2pow_no_init'
+parser = argparse.ArgumentParser(prog='Clustering on meta-heuristic algorithm\'s trajectories', usage='%(prog)s [options]')
+parser.add_argument('-c', choices=['kmeans', 'dbscan'], help="Choose the clustering method")
+args = parser.parse_args()
+if args.c == 'kmeans':
+    CLUSTER_FEATURES_DIR = f'data/clustering_features_x_only_10_algorithms_kmeans_2pow_no_init/'
+else:
+    CLUSTER_FEATURES_DIR = f'data/clustering_features_10_algorithms_dbscan/'
 
 # Sub-directory pattern for cluster distributions per dimension
 CLUSTER_DISTRIBUTIONS_SUBDIR = 'cluster_distributions'
@@ -65,7 +68,7 @@ def compute_trajectory_similarities(directory):
         # Skip anything that is not a regular file (e.g. sub-directories)
         if not os.path.isfile(file_loc):
             continue
-
+        
         # Load cluster distribution; index levels: algorithm, run, iteration
         df = pd.read_csv(file_loc, index_col=[0, 1, 2])
 
@@ -83,16 +86,18 @@ def compute_trajectory_similarities(directory):
         # Rename the melted index columns so they don't clash with the value columns
         c = (
             cs.reset_index()
-              .rename(columns={'algorithm': 'algorithm2', 'run': 'run2'})
-              .melt(
-                  id_vars=[('algorithm2', ''), ('run2', '')],
-                  value_vars=list(cs.columns)
-              )
-              .rename(columns={
-                  ('algorithm2', ''): 'algorithm2',
-                  ('run2', ''): 'run2'
-              })
+            .rename(columns={'algorithm': 'algorithm2', 'run': 'run2'})
+            .melt(
+                id_vars=[('algorithm2', ''), ('run2', '')],
+                value_vars=list(cs.columns)
+            )
+            .rename(columns={
+                ('algorithm2', ''): 'algorithm2',
+                ('run2', ''): 'run2'
+            })
         )
+        c['run'] = c['run'].astype(int)   # fix dtype
+        c['run2'] = c['run2'].astype(int) # fix dtype
 
         # Tag each row with the problem name (strip .csv extension)
         trajectory_similarities.append(c.assign(problem=file.replace('.csv', '')))
@@ -106,36 +111,26 @@ def compute_trajectory_similarities(directory):
 
 def remove_incomplete_algorithms(trajectory_similarities):
     """
-    Drop algorithms (and their counterparts) that do not appear in the
-    maximum possible number of similarity comparisons.
-
-    Some algorithms may be missing from certain problem files, giving them
-    fewer rows than the most complete algorithm. This filter ensures only
-    algorithms with full coverage are retained, for a fair comparison.
-
-    Parameters
-    ----------
-    trajectory_similarities : pd.DataFrame
-        Long-format similarity dataframe (output of compute_trajectory_similarities).
-
-    Returns
-    -------
-    pd.DataFrame
-        Filtered dataframe with incomplete algorithms removed from both
-        the 'algorithm' and 'algorithm2' columns.
+    Drop algorithms that are missing from more than a certain 
+    percentage of problems, rather than requiring perfect coverage.
     """
-    # Count how many comparisons each algorithm appears in
     t = trajectory_similarities.groupby('algorithm').count()['run']
     t_max = t.max()
-
-    # Any algorithm with fewer than the maximum count is considered incomplete
-    algorithms_to_remove = list(t[t < t_max].index)
-
+    
+    # Allow up to 20% missing coverage instead of requiring perfect coverage
+    threshold = t_max * 0.8
+    algorithms_to_remove = list(t[t < threshold].index)
+    
+    print(f"Max count: {t_max}, threshold: {threshold}")
+    print(f"Removing algorithms: {algorithms_to_remove}")
+    
+    if not algorithms_to_remove:
+        return trajectory_similarities
+    
     return trajectory_similarities.query(
         'algorithm not in @algorithms_to_remove'
         ' and algorithm2 not in @algorithms_to_remove'
     )
-
 
 # ---------------------------------------------------------------------------
 # Feature engineering
@@ -259,14 +254,18 @@ def process_dimension(dimension, cluster_features_dir,
     output_dir = f'{cluster_features_dir}/{similarity_output_subdir}'
     os.makedirs(output_dir, exist_ok=True)
 
-    # --- Compute raw pairwise similarities across all problem files ---
     trajectory_similarities = compute_trajectory_similarities(input_dir)
+    #print("After compute:", trajectory_similarities.shape)
+    #print(trajectory_similarities.head())
+    #print("run dtype:", trajectory_similarities['run'].dtype)
+    #print("run2 dtype:", trajectory_similarities['run2'].dtype)
+    #print("run==run2 matches:", trajectory_similarities.query('run==run2').shape[0])
 
-    # --- Drop algorithms with incomplete problem coverage ---
     trajectory_similarities = remove_incomplete_algorithms(trajectory_similarities)
+    #print("After remove_incomplete:", trajectory_similarities.shape)
 
-    # --- Add problem_class and instance columns ---
     trajectory_similarities = add_problem_metadata(trajectory_similarities)
+    #print("After metadata:", trajectory_similarities.shape)
 
     # --- Load algorithm family groupings from utils ---
     optimizer_group = get_algorithm_groups()

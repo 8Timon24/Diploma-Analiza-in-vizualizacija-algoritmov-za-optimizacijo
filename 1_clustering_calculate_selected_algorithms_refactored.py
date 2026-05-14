@@ -8,11 +8,13 @@ from sklearn.metrics.pairwise import cosine_similarity
 import seaborn as sns
 import matplotlib.pyplot as plt
 from utils import *
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, DBSCAN, OPTICS
 from sklearn.datasets import make_blobs
 from yellowbrick.cluster import KElbowVisualizer
 from sklearn.cluster import AgglomerativeClustering
+from sklearn.neighbors import NearestNeighbors
 import math
+import argparse
 
 
 # ---------------------------------------------------------------------------
@@ -34,13 +36,15 @@ ALGORITHMS_OF_INTEREST = [
     "HI_WOA",
 ]
 
-# Root directory where all clustering output will be saved
-DATA_DIR = f'data/clustering_features_x_only_10_algorithms_kmeans_2pow_no_init/'
-
 # Dimensions to process
 DIMENSIONS = [2]
-
-
+parser = argparse.ArgumentParser(prog='Clustering on meta-heuristic algorithm\'s trajectories', usage='%(prog)s [options]')
+parser.add_argument('-c', choices=['kmeans', 'dbscan'], help="Choose the clustering method")
+args = parser.parse_args()
+if args.c == 'kmeans':
+    DATA_DIR = f'data/clustering_features_x_only_10_algorithms_kmeans_2pow_no_init/'
+else:
+    DATA_DIR = f'data/clustering_features_10_algorithms_dbscan/'
 # ---------------------------------------------------------------------------
 # Cluster count selection
 # ---------------------------------------------------------------------------
@@ -79,7 +83,7 @@ def determine_number_of_clusters(X):
 # Clustering
 # ---------------------------------------------------------------------------
 
-def do_clustering(X):
+def fit_kmeans(X):
     """
     Fit a KMeans model using the automatically determined number of clusters.
 
@@ -244,7 +248,7 @@ def compute_cluster_distribution(d):
 # Result saving
 # ---------------------------------------------------------------------------
 
-def save_results(data_dir, dimension, filename, cluster_centers, d, cluster_distribution, x_columns_scaled):
+def save_results(data_dir, dimension, filename, cluster_centers, d, cluster_distribution, x_columns_scaled, kmeans=False):
     """
     Persist all three output artefacts for a single problem file.
 
@@ -271,10 +275,13 @@ def save_results(data_dir, dimension, filename, cluster_centers, d, cluster_dist
         Column names to assign to the cluster-centers CSV.
     """
     # Save cluster centroids
-    pd.DataFrame(cluster_centers, columns=x_columns_scaled).to_csv(
-        f'{data_dir}/cluster_centers/dim_{dimension}/{filename}'
-    )
-
+    if kmeans:
+        pd.DataFrame(cluster_centers, columns=x_columns_scaled).to_csv(
+            f'{data_dir}/cluster_centers/dim_{dimension}/{filename}'
+        )
+    else:
+        cluster_centers.to_csv(f'{data_dir}/cluster_centers/dim_{dimension}/{filename}')
+    
     # Save full clustering results as compressed parquet
     d.to_parquet(
         f'{data_dir}/clustering_results/dim_{dimension}/{filename.replace(".csv", ".parquet")}',
@@ -292,7 +299,7 @@ def save_results(data_dir, dimension, filename, cluster_centers, d, cluster_dist
 # ---------------------------------------------------------------------------
 
 def process_file(filepath, filename, dimension, data_dir,
-                 all_removed_algorithms, algorithms_of_interest):
+                 all_removed_algorithms, algorithms_of_interest, kmeans=False):
     """
     Run the full clustering pipeline for a single problem file.
 
@@ -331,16 +338,55 @@ def process_file(filepath, filename, dimension, data_dir,
     # --- Cluster on raw (unscaled) x columns ---
     X = d[x_columns]
     print(X.shape)
-    cluster_labels, cluster_centers = do_clustering(X)
-    d['cluster'] = cluster_labels
 
-    # --- Summarise cluster membership counts ---
-    cluster_distribution = compute_cluster_distribution(d)
+    if kmeans:
+        cluster_labels, cluster_centers = fit_kmeans(X)
+        d['cluster'] = cluster_labels
+        cluster_distribution = compute_cluster_distribution(d)
+    else:
+        cluster_labels, noise_label = fit_dbscan(X, eps=0.1, min_samples=100)
+        d['cluster'] = cluster_labels  
+        d_no_noise = d[d['cluster'] != noise_label] if noise_label is not None else d
+        cluster_centers = d_no_noise.groupby('cluster')[x_columns].mean()
+        cluster_distribution = compute_cluster_distribution(d_no_noise)
 
     # --- Persist results ---
-    save_results(data_dir, dimension, filename, cluster_centers, d,
-                 cluster_distribution, x_columns_scaled)
+    save_results(data_dir, dimension, filename, cluster_centers, d, cluster_distribution, x_columns_scaled)
 
+def find_eps(X, min_samples, show_plot=True):
+    neighbors = NearestNeighbors(n_neighbors=min_samples)
+    neighbors.fit(X)
+    distances, _ = neighbors.kneighbors(X)
+    
+    # Distance to the k-th nearest neighbour, sorted ascending
+    distances = np.sort(distances[:, -1])
+    
+    if show_plot:
+        plt.figure(figsize=(8, 4))
+        plt.plot(distances)
+        plt.xlabel('Points sorted by distance')
+        plt.ylabel(f'{min_samples}-NN distance')
+        plt.title('K-distance graph — look for the elbow')
+        plt.tight_layout()
+        plt.savefig("kdistance_plot.png")
+        plt.close()
+    
+    return distances
+
+
+def fit_dbscan(X, eps=0.05, min_samples=50):
+    db = DBSCAN(eps=eps, min_samples=min_samples).fit(X)
+    labels = db.labels_
+    unique_labels = set(labels)
+    num_of_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
+    noise = np.sum(labels==-1)
+    print(f"  DBSCAN found {num_of_clusters} clusters, {noise} noise points ({100*noise/len(labels):.1f}%)")
+    noise_label=None
+    if -1 in labels:
+        noise_label = labels.max() + 1
+        labels[labels == -1] = noise_label
+    
+    return labels, noise_label
 
 # ---------------------------------------------------------------------------
 # Per-dimension processing

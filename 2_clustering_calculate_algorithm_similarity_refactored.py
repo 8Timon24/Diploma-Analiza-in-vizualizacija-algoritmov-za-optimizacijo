@@ -33,10 +33,6 @@ SIMILARITY_OUTPUT_SUBDIR = 'algorithm_pairwise_similarity'
 AGGREGATIONS = ['mean', 'median']
 
 
-# ---------------------------------------------------------------------------
-# Per-file similarity computation
-# ---------------------------------------------------------------------------
-
 def compute_trajectory_similarities(directory):
     """
     Load all cluster-distribution CSV files in a directory and compute
@@ -117,8 +113,7 @@ def remove_incomplete_algorithms(trajectory_similarities):
     t = trajectory_similarities.groupby('algorithm').count()['run']
     t_max = t.max()
     
-    # Allow up to 20% missing coverage instead of requiring perfect coverage
-    threshold = t_max * 0.8
+    threshold = t_max * 0.9
     algorithms_to_remove = list(t[t < threshold].index)
     
     print(f"Max count: {t_max}, threshold: {threshold}")
@@ -250,8 +245,8 @@ def process_dimension(dimension, cluster_features_dir,
     """
     print("Dimension ", dimension)
 
-    input_dir = f'{cluster_features_dir}/{cluster_distributions_subdir}/dim_{dimension}'
-    output_dir = f'{cluster_features_dir}/{similarity_output_subdir}'
+    input_dir = f'{cluster_features_dir}/{cluster_distributions_subdir}/dim_{dimension}/eps0.1_ms100'
+    output_dir = f'{cluster_features_dir}/{similarity_output_subdir}/eps0.1_ms100'
     os.makedirs(output_dir, exist_ok=True)
 
     trajectory_similarities = compute_trajectory_similarities(input_dir)

@@ -21,17 +21,9 @@ import itertools
 # Algorithms flagged for removal (loaded from utils)
 ALL_REMOVED_ALGORITHMS = get_removed_algorithms()
 # The specific subset of algorithms we want to cluster
-ALGORITHMS_OF_INTEREST = [
-    "ModifiedAEO",
-    "OriginalAEO",
-    "AugmentedAEO",
-    "OriginalSHADE",
-    "SADE",
-    "JADE",
-    "OriginalDE",
-    "OriginalWOA",
-    "HI_WOA",
-]
+ALGORITHMS_OF_INTEREST = ["ModifiedAEO","OriginalAEO","AugmentedAEO",
+                          "OriginalSHADE","SADE","JADE","OriginalDE",
+                          "OriginalWOA","HI_WOA",]
 
 # Dimensions to process
 DIMENSIONS = [2]
@@ -39,6 +31,7 @@ DIMENSIONS = [2]
 parser = argparse.ArgumentParser(prog='Clustering on meta-heuristic algorithm\'s trajectories', usage='%(prog)s [options]')
 parser.add_argument('-c', choices=['kmeans', 'dbscan', 'dbscan_adaptive'], help="Choose the clustering method")
 args = parser.parse_args()
+
 if args.c == 'kmeans':
     DATA_DIR = f'data/clustering_features_x_only_10_algorithms_kmeans_2pow_no_init/'
 elif args.c == 'dbscan':

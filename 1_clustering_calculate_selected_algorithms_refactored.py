@@ -18,22 +18,28 @@ import argparse
 from kneed import KneeLocator
 import itertools
 
-# Algorithms flagged for removal (loaded from utils)
 ALL_REMOVED_ALGORITHMS = get_removed_algorithms()
 # The specific subset of algorithms we want to cluster
-ALGORITHMS_OF_INTEREST = ["ModifiedAEO","OriginalAEO","AugmentedAEO",
-                          "OriginalSHADE","SADE","JADE","OriginalDE",
-                          "OriginalWOA","HI_WOA",]
+ALGORITHMS_OF_INTEREST = ["JADE", "OriginalDE",
+                        "SADE", "OriginalSHADE",
+                        "ModifiedAEO","OriginalAEO", 
+                        "AugmentedAEO","HI_WOA", 
+                        "OriginalWOA", "OriginalALO", 
+                        "OriginalSSA", "OriginalMFO", 
+                        "OriginalHHO", "OriginalMPA", 
+                        "OriginalMRFO", "WhaleFOA", 
+                        "GWO_WOA", "OriginalGWO", 
+                        "IGWO", "RW_GWO"]
 
 # Dimensions to process
-DIMENSIONS = [2]
+DIMENSIONS = [2, 5, 10]
 #Arguements to distinguish the type of clustering we want to do
 parser = argparse.ArgumentParser(prog='Clustering on meta-heuristic algorithm\'s trajectories', usage='%(prog)s [options]')
 parser.add_argument('-c', choices=['kmeans', 'dbscan', 'dbscan_adaptive'], help="Choose the clustering method")
 args = parser.parse_args()
 
 if args.c == 'kmeans':
-    DATA_DIR = f'data/clustering_features_x_only_10_algorithms_kmeans_2pow_no_init/'
+    DATA_DIR = f'data/clustering_features_20_algorithms_kmeans/'
 elif args.c == 'dbscan':
     DATA_DIR = f'data/clustering_features_10_algorithms_dbscan/'
 elif args.c == 'dbscan_adaptive':
@@ -64,7 +70,7 @@ def determine_number_of_clusters(X):
 
     visualizer = KElbowVisualizer(model, k=cluster_options)
     visualizer.fit(X)
-    visualizer.show()
+    #visualizer.show()
 
     return visualizer.elbow_value_
 
@@ -145,7 +151,7 @@ def load_and_filter_data(filepath, dimension, all_removed_algorithms, algorithms
     """
     d = pd.read_csv(filepath, compression='zip', index_col=0)
 
-    budget = 500*dimension
+    budget = 1100*dimension
     d = d.query('evaluations <= @budget')
 
     d = d.query(
@@ -214,7 +220,7 @@ def compute_cluster_distribution(d):
 
 
 
-def save_results(data_dir, dimension, filename, cluster_centers, d, cluster_distribution, x_columns_scaled, kmeans=False, dbscan_data=None):
+def save_results(data_dir, dimension, filename, cluster_centers, d, cluster_distribution, x_columns_scaled, kmeans=True, dbscan_data=None):
     """
     Persist all three output artefacts for a single problem file.
 
@@ -240,16 +246,16 @@ def save_results(data_dir, dimension, filename, cluster_centers, d, cluster_dist
     x_columns_scaled : list of str
         Column names to assign to the cluster-centers CSV.
     """
-    # Save cluster centroids
-    eps = dbscan_data['eps']
-    ms = dbscan_data['min_samples']
-    eps_method = dbscan_data['eps_method']
 
     if kmeans:
         pd.DataFrame(cluster_centers, columns=x_columns_scaled).to_csv(f'{data_dir}/cluster_centers/dim_{dimension}/{filename}')
         cluster_distribution.to_csv(f'{data_dir}/cluster_distributions/dim_{dimension}/{filename}')
         d.to_parquet(f'{data_dir}/clustering_results/dim_{dimension}/{filename.replace(".csv", ".parquet")}', compression='gzip')
     else:
+        # Save cluster centroids
+        eps = dbscan_data['eps']
+        ms = dbscan_data['min_samples']
+        eps_method = dbscan_data['eps_method']
         print(type(eps), eps)
         print(type(ms), ms)
         os.makedirs(f'{data_dir}/cluster_centers/dim_{dimension}/eps{eps}_ms{ms}/', exist_ok=True)
@@ -339,7 +345,7 @@ def process_file(filepath, filename, dimension, data_dir,
         save_results(data_dir, dimension, filename, cluster_centers, d, cluster_distribution, x_columns_scaled, dbscan_data=data)
     """
     
-def k_distance_graph(X, min_samples, show_plot=True):
+def k_distance_graph(X, min_samples, show_plot=False):
     neighbors = NearestNeighbors(n_neighbors=min_samples)
     neighbors.fit(X)
     distances, _ = neighbors.kneighbors(X)
@@ -485,12 +491,15 @@ def process_dimension(dimension, data_dir, all_removed_algorithms, algorithms_of
     input_dir = f'data/processed/dim_{dimension}'
     for filename in tqdm(os.listdir(input_dir)):
         filepath = f'{input_dir}/{filename}'
+        print("Clustering: " + filepath)
         if args.c == 'dbscan':
             for epsilon, ms in itertools.product([0.1], [100, 150]):
                 process_file(
                     filepath, filename, dimension, data_dir,
                     all_removed_algorithms, algorithms_of_interest, kmeans=False, adaptive =  args.c == 'dbscan_adaptive', eps = epsilon, ms = ms
                 )
+        else:
+            process_file(filepath, filename, dimension, data_dir, all_removed_algorithms, algorithms_of_interest, kmeans=True)
 
 
 def main():

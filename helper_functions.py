@@ -33,14 +33,10 @@ Returns a numpy array of x,y and fitness values for the best agent's trajectory 
 """
 def best_trajectory(model):
     trajectory = []
-
     for agent in model.history.list_global_best:
-        trajectory.append([
-            agent.solution[0],
-            agent.solution[1],
-            agent.target.fitness
-        ])
-
+        row = list(agent.solution)
+        row.append(agent.target.fitness)
+        trajectory.append(row)
     return np.array(trajectory)
 
 """
@@ -48,27 +44,20 @@ Saves the best solution found by the algorithm on the given problem instance and
 """
 def save_best_solution(filename, alg, problem_id, instance_id, seed, x, y):
     file_exists = os.path.isfile(filename)
-
     with open(filename, mode="a", newline="") as f:
         writer = csv.writer(f)
-
         if not file_exists:
-            writer.writerow([
-                "algorithm", "problem_id", "instance_id",
-                "seed", "x1", "x2", "fitness"
-            ])
-
-        writer.writerow([
-            alg, problem_id, instance_id,
-            seed, x[0], x[1], y
-        ])
+            coord_cols = [f'x{i+1}' for i in range(len(x))]
+            writer.writerow(["algorithm", "problem_id", "instance_id", "seed"] + coord_cols + ["fitness"])
+        writer.writerow([alg, problem_id, instance_id, seed] + list(x) + [y])
 
 """
 Saves the trajectory given as an array of 3-tuples to a .csv file.
 """
-def save_trajectory(path, traj):
-    pd.DataFrame(traj, columns=['x1', 'x2', 'fitness', 'iteration', 'evaluations']).to_csv(path, index=False)
-
+def save_trajectory(path, traj, dim):
+    n_coords = traj.shape[1] - 3  # subtract fitness, iteration, evals
+    cols = [f'x{i+1}' for i in range(n_coords)] + ['fitness', 'iteration', 'evaluations']
+    pd.DataFrame(traj, columns=cols).to_csv(path, index=False)
 """ 
 Returns all available optimizers in the current mealpy library version. If verbose=True, it also prints them to the console.
 """
@@ -161,12 +150,11 @@ def run_benchmarks(suite, observer, optimizers, out_dir, seed=1, epoch=100, pop_
                 model = algo_class(epoch=epoch, pop_size=pop_size)
                 result = model.solve(problem_def)
                 
-                directory = f"{out_dir}/{name}/{problem.id_function}_{problem.id_instance}"
+                directory = f"{out_dir}/dim_{problem.dimension}/{name}/{problem.id_function}_{problem.id_instance}"
                 os.makedirs(directory, exist_ok=True)
 
                 x = model.g_best.solution
                 y = model.g_best.target.fitness
-
                 traj = population_trajectory(model, pop_size)
                 
                 if charts:
@@ -174,7 +162,7 @@ def run_benchmarks(suite, observer, optimizers, out_dir, seed=1, epoch=100, pop_
                 if results:
                     save_best_solution(f"{out_dir}/results.csv", name, problem.id_function, problem.id_instance, seed, x, y)
                 
-                save_trajectory(f"{directory}/trajectory_{seed}.csv", traj)
+                save_trajectory(f"{directory}/trajectory_{seed}.csv", traj, problem.dimension)
                 
                 print(f"  [{name}] {problem.id} | f*={result.target.fitness:.4e} | evals={problem.evaluations}")
 
@@ -182,25 +170,16 @@ def run_benchmarks(suite, observer, optimizers, out_dir, seed=1, epoch=100, pop_
                 print(f"  [{name}] {problem.id} | FAILED: {e}")
 
 def population_trajectory(model, pop_size):
-    """
-    Returns a list of [x1, x2, fitness, iteration, evaluations] for every agent
-    at every iteration — full population, not just the best.
-    Evaluations are computed as iteration * pop_size since each epoch
-    evaluates exactly pop_size solutions.
-    """
     trajectory = []
     for iteration, population in enumerate(model.history.list_population):
-        evals = (iteration + 1) * pop_size  # cumulative evaluations at this epoch
+        evals = (iteration + 1) * pop_size
         for agent in population:
-            trajectory.append([
-                agent.solution[0],
-                agent.solution[1],
-                agent.target.fitness,
-                iteration + 1,
-                evals
-            ])
+            row = list(agent.solution)  # all dimensions dynamically
+            row.append(agent.target.fitness)
+            row.append(iteration + 1)
+            row.append(evals)
+            trajectory.append(row)
     return np.array(trajectory)
-
 """
 Returns a cocoex suite for the parameters which are given as lists of integers:
 -> functions [1, ..., 24]

@@ -47,7 +47,12 @@ if __name__ == "__main__":
                         "SADE": optimizers["SADE"], "OriginalSHADE": optimizers["OriginalSHADE"],
                         "ModifiedAEO": optimizers["ModifiedAEO"],"OriginalAEO": optimizers["OriginalAEO"], 
                         "AugmentedAEO": optimizers["AugmentedAEO"],"HI_WOA": optimizers["HI_WOA"], 
-                        "OriginalWOA": optimizers["OriginalWOA"]}
+                        "OriginalWOA": optimizers["OriginalWOA"], "OriginalALO":optimizers["OriginalALO"], 
+                        "OriginalSSA": optimizers["OriginalSSA"], "OriginalMFO": optimizers["OriginalMFO"], 
+                        "OriginalHHO":optimizers["OriginalHHO"], "OriginalMPA":optimizers["OriginalMPA"], 
+                        "OriginalMRFO": optimizers["OriginalMRFO"], "WhaleFOA": optimizers["WhaleFOA"], 
+                        "GWO_WOA": optimizers["GWO_WOA"], "OriginalGWO": optimizers["OriginalGWO"], 
+                        "IGWO": optimizers["IGWO"], "RW_GWO": optimizers["RW_GWO"]}
     
     if args.d: dimensions = args.d
     if args.f: function_ids = args.f
@@ -68,7 +73,7 @@ if __name__ == "__main__":
         print(f"{'='*50}")
         with ProcessPoolExecutor() as executor:
             for d in dimensions:
-                executor.submit(run_benchmarks_all_seeds, function_ids, instance_ids, dimensions, 
+                executor.submit(run_benchmarks_all_seeds, function_ids, instance_ids, d, 
                                 optimizers_filtered, "outputs", seeds, 20, 50)
     elif parallelization == 'f':
         print(f"\n{'='*50}")

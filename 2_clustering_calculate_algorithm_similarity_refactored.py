@@ -14,12 +14,12 @@ import argparse
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-DIMENSIONS = [2]
+DIMENSIONS = [2, 5, 10]
 parser = argparse.ArgumentParser(prog='Clustering on meta-heuristic algorithm\'s trajectories', usage='%(prog)s [options]')
 parser.add_argument('-c', choices=['kmeans', 'dbscan'], help="Choose the clustering method")
 args = parser.parse_args()
 if args.c == 'kmeans':
-    CLUSTER_FEATURES_DIR = f'data/clustering_features_x_only_10_algorithms_kmeans_2pow_no_init/'
+    CLUSTER_FEATURES_DIR = f'data/clustering_features_20_algorithms_kmeans/'
 else:
     CLUSTER_FEATURES_DIR = f'data/clustering_features_10_algorithms_dbscan/'
 
@@ -113,7 +113,7 @@ def remove_incomplete_algorithms(trajectory_similarities):
     t = trajectory_similarities.groupby('algorithm').count()['run']
     t_max = t.max()
     
-    threshold = t_max * 0.9
+    threshold = t_max
     algorithms_to_remove = list(t[t < threshold].index)
     
     print(f"Max count: {t_max}, threshold: {threshold}")
@@ -245,8 +245,8 @@ def process_dimension(dimension, cluster_features_dir,
     """
     print("Dimension ", dimension)
 
-    input_dir = f'{cluster_features_dir}/{cluster_distributions_subdir}/dim_{dimension}/eps0.1_ms100'
-    output_dir = f'{cluster_features_dir}/{similarity_output_subdir}/eps0.1_ms100'
+    input_dir = f'{cluster_features_dir}/{cluster_distributions_subdir}/dim_{dimension}'
+    output_dir = f'{cluster_features_dir}/{similarity_output_subdir}'
     os.makedirs(output_dir, exist_ok=True)
 
     trajectory_similarities = compute_trajectory_similarities(input_dir)

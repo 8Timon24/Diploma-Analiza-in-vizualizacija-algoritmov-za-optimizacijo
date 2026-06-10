@@ -15,7 +15,7 @@ def run_benchmarks_all_seeds(function_ids, instance_ids, dimensions, optimizers,
         raise
 
 if __name__ == "__main__":
-    optimizers, optimizer_names = get_optimizers_safe(True)
+    optimizers, optimizer_names = get_optimizers_safe()
     parser = argparse.ArgumentParser(prog='Mealpy_benchmarks', usage='%(prog)s [options]',
                                      description="The program runs the bbob functions and their instances contained in cocoex bbob suite" \
                                      "on algorithms from the ClustOpt paper, with different seeds.")
@@ -43,16 +43,11 @@ if __name__ == "__main__":
     function_ids = list(range(1, 25))
     instance_ids = list(range(1, 6))
     seeds = [1, 2, 3, 4, 5]
-    optimizers_filtered = {"JADE": optimizers["JADE"], "OriginalDE": optimizers["OriginalDE"],
-                        "SADE": optimizers["SADE"], "OriginalSHADE": optimizers["OriginalSHADE"],
-                        "ModifiedAEO": optimizers["ModifiedAEO"],"OriginalAEO": optimizers["OriginalAEO"], 
-                        "AugmentedAEO": optimizers["AugmentedAEO"],"HI_WOA": optimizers["HI_WOA"], 
-                        "OriginalWOA": optimizers["OriginalWOA"], "OriginalALO":optimizers["OriginalALO"], 
-                        "OriginalSSA": optimizers["OriginalSSA"], "OriginalMFO": optimizers["OriginalMFO"], 
-                        "OriginalHHO":optimizers["OriginalHHO"], "OriginalMPA":optimizers["OriginalMPA"], 
-                        "OriginalMRFO": optimizers["OriginalMRFO"], "WhaleFOA": optimizers["WhaleFOA"], 
-                        "GWO_WOA": optimizers["GWO_WOA"], "OriginalGWO": optimizers["OriginalGWO"], 
-                        "IGWO": optimizers["IGWO"], "RW_GWO": optimizers["RW_GWO"]}
+    optimizers_filtered = {"OriginalSSpiderA": optimizers["OriginalSSpiderA"], "ImprovedBSO" : optimizers["ImprovedBSO"], 
+                           "L_SHADE":optimizers["L_SHADE"], "LevyTWO":optimizers["LevyTWO"], "OriginalCSA":optimizers["OriginalCSA"],
+                           "OriginalSSpiderA":optimizers["OriginalSSpiderA"], "OriginalHC":optimizers["OriginalHC"],
+                           "OriginalMFO":optimizers["OriginalMFO"], "OriginalFPA":optimizers["OriginalFPA"],
+                           "OriginalNMRA": optimizers["OriginalNMRA"]}
     
     if args.d: dimensions = args.d
     if args.f: function_ids = args.f

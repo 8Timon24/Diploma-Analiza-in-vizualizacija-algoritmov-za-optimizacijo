@@ -20,17 +20,20 @@ import itertools
 
 ALL_REMOVED_ALGORITHMS = get_removed_algorithms()
 # The specific subset of algorithms we want to cluster
-ALGORITHMS_OF_INTEREST = ["JADE", "OriginalDE",
-                        "SADE", "OriginalSHADE",
-                        "ModifiedAEO","OriginalAEO", 
-                        "AugmentedAEO","HI_WOA", 
-                        "OriginalWOA", "OriginalALO", 
-                        "OriginalSSA", "OriginalMFO", 
-                        "OriginalHHO", "OriginalMPA", 
-                        "OriginalMRFO", "WhaleFOA", 
-                        "GWO_WOA", "OriginalGWO", 
-                        "IGWO", "RW_GWO"]
-
+ALGORITHMS_OF_INTEREST = ["AugmentedAEO", "GWO_WOA",
+                           "HI_WOA", "IGWO",
+                           "ImprovedBSO", "JADE",
+                           "L_SHADE", "LevyTWO",
+                           "ModifiedAEO", "OriginalAEO",
+                           "OriginalALO", "OriginalCSA",
+                           "OriginalDE", "OriginalFPA",
+                           "OriginalGWO", "OriginalHC",
+                           "OriginalHHO", "OriginalMFO",
+                           "OriginalMPA", "OriginalMRFO",
+                           "OriginalNMRA", "OriginalSHADE",
+                           "OriginalSSA", "OriginalSSpiderA",
+                           "OriginalWOA", "RW_GWO",
+                           "SADE", "WhaleFOA"]
 # Dimensions to process
 DIMENSIONS = [2, 5, 10]
 #Arguements to distinguish the type of clustering we want to do
@@ -39,7 +42,7 @@ parser.add_argument('-c', choices=['kmeans', 'dbscan', 'dbscan_adaptive'], help=
 args = parser.parse_args()
 
 if args.c == 'kmeans':
-    DATA_DIR = f'data/clustering_features_20_algorithms_kmeans/'
+    DATA_DIR = f'data/clustering_latest/'
 elif args.c == 'dbscan':
     DATA_DIR = f'data/clustering_features_10_algorithms_dbscan/'
 elif args.c == 'dbscan_adaptive':

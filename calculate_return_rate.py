@@ -8,20 +8,27 @@ import os
 import numpy as np
 from sklearn.manifold import MDS
 
-ALL_REMOVED_ALGORITHMS = get_removed_algorithms()
-ALGORITHMS_OF_INTEREST = ["JADE", "OriginalDE",
-                        "SADE", "OriginalSHADE",
-                        "ModifiedAEO","OriginalAEO", 
-                        "AugmentedAEO","HI_WOA", 
-                        "OriginalWOA", "OriginalALO", 
-                        "OriginalSSA", "OriginalMFO", 
-                        "OriginalHHO", "OriginalMPA", 
-                        "OriginalMRFO", "WhaleFOA", 
-                        "GWO_WOA", "OriginalGWO", 
-                        "IGWO", "RW_GWO"]
+ALGORITHMS_OF_INTEREST = ["AugmentedAEO", "GWO_WOA",
+                           "HI_WOA", "IGWO",
+                           "ImprovedBSO", "JADE",
+                           "L_SHADE", "LevyTWO",
+                           "ModifiedAEO", "OriginalAEO",
+                           "OriginalALO", "OriginalCSA",
+                           "OriginalDE", "OriginalFPA",
+                           "OriginalGWO", "OriginalHC",
+                           "OriginalHHO", "OriginalMFO",
+                           "OriginalMPA", "OriginalMRFO",
+                           "OriginalNMRA", "OriginalSHADE",
+                           "OriginalSSA", "OriginalSSpiderA",
+                           "OriginalWOA", "RW_GWO",
+                           "SADE", "WhaleFOA"]
+
 DIMENSIONS = [2, 5, 10]
-INPUT_DIR = 'data/clustering_features_20_algorithms_kmeans/cluster_distributions'
-OUTPUT_DIR = 'figures_revisiting'
+FUNCTIONS = [i for i in range(1, 25)]
+INSTANCES = [i for i in range(1, 6)]
+INPUT_DIR = 'data/clustering_latest/cluster_distributions'
+FIGURES_OUTPUT_DIR = 'figures_revisiting'
+RR_DATA_DIR = 'data/return_rate'
 
 def revisiting_history(d,threshold=3):
     visit_history = {}
@@ -46,26 +53,37 @@ def revisiting_history(d,threshold=3):
     
     return pd.DataFrame(returns)
 
-def shared_rr_for_problem(history, alg1, alg2, problem):
-    prob_data = history.query('problem == @problem')
-    
-    clusters_alg1 = set(prob_data.query('algorithm == @alg1')['cluster'].unique())
-    clusters_alg2 = set(prob_data.query('algorithm == @alg2')['cluster'].unique())
-    
-    if not clusters_alg1 and not clusters_alg2:
-        return pd.DataFrame()
-    
-    intersection = len(clusters_alg1 & clusters_alg2)
-    union = len(clusters_alg1 | clusters_alg2)
-    similarity = intersection / union if union > 0 else 0
-    
-    return pd.DataFrame([{
-        'problem': problem,
-        'similarity': similarity,
-        'shared_clusters': intersection,
-        'alg1_only': len(clusters_alg1 - clusters_alg2),
-        'alg2_only': len(clusters_alg2 - clusters_alg1)
-    }])
+# NOTE: shared_rr_for_problem is disabled in favor of shared_revisit_rate.
+# It pools all 5 runs together before computing Jaccard similarity on the
+# unioned set of visited clusters. This is methodologically weaker than
+# shared_revisit_rate, which computes Jaccard PER RUN and then averages:
+# pooling across runs inflates apparent overlap between two algorithms,
+# since a cluster visited by alg1 in run 3 and by alg2 in run 5 (but never
+# in the same run) still counts as "shared" here, even though the two
+# algorithms never actually behaved similarly on the same search trajectory.
+# Per-run averaging avoids this false-positive overlap and matches the
+# corrected methodology used elsewhere in the pipeline.
+#
+# def shared_rr_for_problem(history, alg1, alg2, problem):
+#     prob_data = history.query('problem == @problem')
+#
+#     clusters_alg1 = set(prob_data.query('algorithm == @alg1')['cluster'].unique())
+#     clusters_alg2 = set(prob_data.query('algorithm == @alg2')['cluster'].unique())
+#
+#     if not clusters_alg1 and not clusters_alg2:
+#         return pd.DataFrame()
+#
+#     intersection = len(clusters_alg1 & clusters_alg2)
+#     union = len(clusters_alg1 | clusters_alg2)
+#     similarity = intersection / union if union > 0 else 0
+#
+#     return pd.DataFrame([{
+#         'problem': problem,
+#         'similarity': similarity,
+#         'shared_clusters': intersection,
+#         'alg1_only': len(clusters_alg1 - clusters_alg2),
+#         'alg2_only': len(clusters_alg2 - clusters_alg1)
+#     }])
 
 def shared_revisit_rate(history, alg1, alg2, by='problem', weighted=False):
     results = []
@@ -151,7 +169,12 @@ def pairwise_revisit_matrix(input_dir, algorithms_of_interest, specified_problem
         
     for alg1, alg2 in pairs:
         if specified_problem is not None:
-            result = shared_rr_for_problem(all_problems_history, alg1, alg2, problem=specified_problem)
+            # Filter to just the one problem, then reuse the per-run-averaged
+            # shared_revisit_rate (grouped by 'problem') instead of the old
+            # pooled-across-runs shared_rr_for_problem. See note above
+            # shared_rr_for_problem's (commented-out) definition for why.
+            problem_history = all_problems_history.query('problem == @specified_problem')
+            result = shared_revisit_rate(problem_history, alg1, alg2, by='problem', weighted=weighted)
         else:
             result = shared_revisit_rate(all_problems_history, alg1, alg2, by=by, weighted=weighted)
         
@@ -160,7 +183,6 @@ def pairwise_revisit_matrix(input_dir, algorithms_of_interest, specified_problem
                 'algorithm': alg1,
                 'algorithm2': alg2,
                 'mean_similarity': result['similarity'].mean(),
-                'mean_shared_clusters': result['shared_clusters'].mean()
             })
 
     pairwise_df = pd.DataFrame(pairwise)
@@ -182,7 +204,7 @@ def pairwise_revisit_matrix(input_dir, algorithms_of_interest, specified_problem
 def get_per_algorithm_revisits(all_problem_history):
     return all_problem_history.groupby(["algorithm"]).agg(total_revisits=('cluster', 'count')).sort_values(by='total_revisits', ascending=False)
 
-def plot_mean_rr(matrix,output_dir, type="problem", w = False): 
+def plot_mean_rr(matrix,FIGURES_OUTPUT_DIR, type="problem", w = False): 
     sns.set_theme(font_scale=0.8)  # smaller font
     fig, ax = plt.subplots(figsize=(10, 8))  # adjust size as needed
     sns.heatmap(matrix, annot=True, fmt='.2f', cmap='YlGnBu', ax=ax)
@@ -191,28 +213,29 @@ def plot_mean_rr(matrix,output_dir, type="problem", w = False):
     plt.xticks(rotation=45, ha='right')  # rotate x labels so they don't overlap
     plt.yticks(rotation=0)
     plt.tight_layout()
-    save_path = f'{output_dir}/mean_return_rate_to_same_cluster_in_{type}_weighted.pdf' if w else f'{output_dir}/mean_return_rate_to_same_cluster_in_{type}.pdf'
+    save_path = f'{FIGURES_OUTPUT_DIR}/mean_return_rate_to_same_cluster_in_{type}_weighted.pdf' if w else f'{FIGURES_OUTPUT_DIR}/mean_return_rate_to_same_cluster_in_{type}.pdf'
     plt.savefig(save_path, bbox_inches='tight', pad_inches=0.2)
     sns.set_theme(font_scale=1)  # reset font scale
     plt.close()
 
-def plot_clustermap(matrix, output_dir, type="problem"):
+def plot_clustermap(matrix, FIGURES_OUTPUT_DIR, type="problem"):
     sns.clustermap(matrix, cmap='YlGnBu', figsize=(14, 6), annot=False, standard_scale=0  )
-    plt.savefig(f'{output_dir}/{type}_revisiting_clustermap.pdf', bbox_inches='tight')
+    plt.savefig(f'{FIGURES_OUTPUT_DIR}/{type}_revisiting_clustermap.pdf', bbox_inches='tight')
     plt.close()
 
-def plot_revisits(per_alg, output_dir):
+def plot_revisits(per_alg, FIGURES_OUTPUT_DIR):
     fig, ax = plt.subplots(figsize=(10, 5))
-    sns.barplot(data=per_alg.reset_index(), x='algorithm', y='total_revisits', palette='tab10', ax=ax)
+    sns.barplot(data=per_alg.reset_index(), x='algorithm', y='total_revisits',
+                hue='algorithm', palette='tab10', legend=False, ax=ax)
     ax.set_title('Total Revisits per Algorithm')
     ax.set_xlabel('Algorithm')
     ax.set_ylabel('Total Revisits')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(f'{output_dir}/total_revisits.pdf')
+    plt.savefig(f'{FIGURES_OUTPUT_DIR}/total_revisits.pdf')
     plt.close()
 
-def plot_mds(matrix, output_dir, type="problem"):
+def plot_mds(matrix, FIGURES_OUTPUT_DIR, type="problem"):
     distance_matrix = 1 - matrix.astype(float)
     distance_matrix = distance_matrix.fillna(1.0)
     np.fill_diagonal(distance_matrix.values, 0.0)  
@@ -260,10 +283,10 @@ def plot_mds(matrix, output_dir, type="problem"):
     ax.set_ylabel('MDS Dimension 2')
     ax.grid(True, linestyle='--', alpha=0.4)
     plt.tight_layout()
-    plt.savefig(f'{output_dir}/mds_behavioral_distance_{type}.pdf', bbox_inches='tight')
+    plt.savefig(f'{FIGURES_OUTPUT_DIR}/mds_behavioral_distance_{type}.pdf', bbox_inches='tight')
     plt.close()
 
-def plot_mean_rr_problem(matrix, output_dir, problem_name):
+def plot_mean_rr_problem(matrix, FIGURES_OUTPUT_DIR, problem_name):
     sns.set_theme(font_scale=0.8)
     fig, ax = plt.subplots(figsize=(10, 8))
     sns.heatmap(matrix, annot=True, fmt='.2f', cmap='YlGnBu', ax=ax)
@@ -271,7 +294,7 @@ def plot_mean_rr_problem(matrix, output_dir, problem_name):
     plt.xticks(rotation=45, ha='right')
     plt.yticks(rotation=0)
     plt.tight_layout()
-    plt.savefig(f'{output_dir}/mean_return_rate_{problem_name}.pdf', bbox_inches='tight', pad_inches=0.2)
+    plt.savefig(f'{FIGURES_OUTPUT_DIR}/mean_return_rate_{problem_name}.pdf', bbox_inches='tight', pad_inches=0.2)
     sns.set_theme(font_scale=1)
     plt.close()
 
@@ -280,31 +303,31 @@ if __name__ == "__main__":
     for d in DIMENSIONS:    
         input_dir = f'{INPUT_DIR}/dim_{d}'
         os.makedirs(input_dir, exist_ok=True)
-        output_dir = f'{OUTPUT_DIR}/dim_{d}'
-        os.makedirs(output_dir, exist_ok=True)
+        FIGURES_OUTPUT_DIR = f'{FIGURES_OUTPUT_DIR}/dim_{d}'
+        os.makedirs(FIGURES_OUTPUT_DIR, exist_ok=True)
 
         aph = get_all_problems_revisiting_history(input_dir, algorithms_of_interest=ALGORITHMS_OF_INTEREST)
         per_alg = get_per_algorithm_revisits(aph)
-        problem = "F1_I1"
-        matrix = pairwise_revisit_matrix(input_dir, ALGORITHMS_OF_INTEREST,specified_problem=problem)
-        plot_mean_rr_problem(matrix, output_dir, problem)
-        plot_revisits(per_alg, output_dir)
+        problem = "F17_I1"
+        # Pass history=aph so this reuses the already-computed data above
+        # instead of silently recomputing get_all_problems_revisiting_history
+        # a second time (which was scanning every CSV in input_dir again).
+        matrix = pairwise_revisit_matrix(input_dir, ALGORITHMS_OF_INTEREST, specified_problem=problem, history=aph)
+        plot_mean_rr_problem(matrix, FIGURES_OUTPUT_DIR, problem)
+        plot_revisits(per_alg, FIGURES_OUTPUT_DIR)
         
-        """
-        matrix_full_pc = pairwise_revisit_matrix(input_dir, ALGORITHMS_OF_INTEREST, by='problem_class')
-        matrix_full_p = pairwise_revisit_matrix(input_dir, ALGORITHMS_OF_INTEREST)
-        matrix_full_p_weighted = pairwise_revisit_matrix(input_dir, ALGORITHMS_OF_INTEREST, weighted=True)
-        matrix_full_pc_weighted = pairwise_revisit_matrix(input_dir, ALGORITHMS_OF_INTEREST, by='problem_class', weighted=True)
+        
+        matrix_full_pc = pairwise_revisit_matrix(input_dir, ALGORITHMS_OF_INTEREST, by='problem_class', history=aph)
+        matrix_full_p = pairwise_revisit_matrix(input_dir, ALGORITHMS_OF_INTEREST, history=aph)
+        matrix_full_p_weighted = pairwise_revisit_matrix(input_dir, ALGORITHMS_OF_INTEREST, weighted=True, history=aph)
+        matrix_full_pc_weighted = pairwise_revisit_matrix(input_dir, ALGORITHMS_OF_INTEREST, by='problem_class', weighted=True, history=aph)
 
-        plot_mean_rr(matrix=matrix_full_p, output_dir=output_dir)
-        plot_mean_rr(matrix=matrix_full_pc, output_dir=output_dir, type="problem class")
-        plot_mean_rr(matrix=matrix_full_p_weighted, output_dir=output_dir, w = True)
-        plot_mean_rr(matrix=matrix_full_pc_weighted, output_dir = output_dir, type="problem_class", w = True)
-        plot_mds(matrix_full_p, output_dir=output_dir)
-        plot_mds(matrix_full_pc, output_dir=output_dir, type="problem_class")
-        """
-    #plot_clustermap(matrix=matrix_full_pc, type="problem class")
+        plot_mean_rr(matrix=matrix_full_p, FIGURES_OUTPUT_DIR=FIGURES_OUTPUT_DIR)
+        plot_mean_rr(matrix=matrix_full_pc, FIGURES_OUTPUT_DIR=FIGURES_OUTPUT_DIR, type="problem class")
+        plot_mean_rr(matrix=matrix_full_p_weighted, FIGURES_OUTPUT_DIR=FIGURES_OUTPUT_DIR, w = True)
+        plot_mean_rr(matrix=matrix_full_pc_weighted, FIGURES_OUTPUT_DIR = FIGURES_OUTPUT_DIR, type="problem_class", w = True)
+        plot_mds(matrix_full_p, FIGURES_OUTPUT_DIR=FIGURES_OUTPUT_DIR)
+        plot_mds(matrix_full_pc, FIGURES_OUTPUT_DIR=FIGURES_OUTPUT_DIR, type="problem_class")
+        
     
-    #plot_revisits(per_alg)
-
-
+    

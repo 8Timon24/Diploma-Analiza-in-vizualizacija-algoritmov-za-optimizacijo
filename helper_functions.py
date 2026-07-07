@@ -29,14 +29,30 @@ def generate_all_charts(model, out_dir, seed):
 
 
 """
-Returns a numpy array of x,y and fitness values for the best agent's trajectory in space.
+Returns a numpy array of x,y and fitness values for the best agent's trajectory in space,
+plus the iteration index (1-indexed, consistent with population_trajectory).
 """
 def best_trajectory(model):
     trajectory = []
-    for agent in model.history.list_global_best:
+    for iteration, agent in enumerate(model.history.list_global_best):
         row = list(agent.solution)
         row.append(agent.target.fitness)
+        row.append(iteration + 1)
         trajectory.append(row)
+    return np.array(trajectory)
+
+def diversity_trajectory(model):
+    diversity = model.history.list_diversity
+    exploration = model.history.list_exploration
+    exploitation = model.history.list_exploitation
+    trajectory = []
+    for iteration in range(len(diversity)):
+        trajectory.append([
+            iteration + 1,
+            diversity[iteration],
+            exploration[iteration],
+            exploitation[iteration],
+        ])
     return np.array(trajectory)
 
 """
@@ -52,12 +68,35 @@ def save_best_solution(filename, alg, problem_id, instance_id, seed, x, y):
         writer.writerow([alg, problem_id, instance_id, seed] + list(x) + [y])
 
 """
-Saves the trajectory given as an array of 3-tuples to a .csv file.
+Saves the FULL POPULATION trajectory given as an array of rows
+[x1, ..., xd, fitness, iteration, evaluations] to a .csv file.
+Only use this for population_trajectory() output - it assumes exactly
+3 trailing non-coordinate columns (fitness, iteration, evaluations).
+Do NOT use this for best_trajectory() output - see save_best_trajectory_csv
+below, since that array has a different shape (no evaluations column).
 """
 def save_trajectory(path, traj, dim):
     n_coords = traj.shape[1] - 3  # subtract fitness, iteration, evals
     cols = [f'x{i+1}' for i in range(n_coords)] + ['fitness', 'iteration', 'evaluations']
     pd.DataFrame(traj, columns=cols).to_csv(path, index=False)
+
+"""
+Saves a BEST-TRAJECTORY (g_best-over-time) array as produced by
+best_trajectory() to a .csv file. Rows are [x1, ..., xd, fitness, iteration] -
+note this has only 2 trailing non-coordinate columns, unlike save_trajectory
+which expects 3 (population data also has an evaluations column). Using
+save_trajectory on this data would silently mislabel the last few columns
+instead of raising an error, since the column count still happens to match.
+"""
+def save_best_trajectory_csv(path, traj, dim):
+    n_coords = traj.shape[1] - 2  # subtract fitness, iteration
+    cols = [f'x{i+1}' for i in range(n_coords)] + ['fitness', 'iteration']
+    pd.DataFrame(traj, columns=cols).to_csv(path, index=False)
+
+def save_diversity_csv(path, traj):
+    cols = ['iteration', 'diversity', 'exploration', 'exploitation']
+    pd.DataFrame(traj, columns=cols).to_csv(path, index=False)
+
 """ 
 Returns all available optimizers in the current mealpy library version. If verbose=True, it also prints them to the console.
 """
@@ -120,7 +159,7 @@ the algorithm. Example:
 -> run_benchmarks(suite, observer, {"DevBBO": optimizers["DevBBO"]}, "output_single", seed=1,  epoch=200, pop_size=50)
 -> run_benchmarks(suite, observer, optimizers, "output_all", seed=2, epoch=200, pop_size=50)
 """
-def run_benchmarks(suite, observer, optimizers, out_dir, seed=1, epoch=100, pop_size=20, charts=False, results=False):
+def run_benchmarks(suite, observer, optimizers, out_dir, seed=1, epoch=100, pop_size=20, charts=False, results=False, only_best=False, save_diversity=False):
     for name, algo_class in optimizers.items():
         print(f"\n{'='*50}")
         print(f"Running optimizer: {name}")
@@ -155,15 +194,22 @@ def run_benchmarks(suite, observer, optimizers, out_dir, seed=1, epoch=100, pop_
 
                 x = model.g_best.solution
                 y = model.g_best.target.fitness
-                traj = population_trajectory(model, pop_size)
                 
                 if charts:
                     generate_all_charts(model, directory, seed)
                 if results:
-                    save_best_solution(f"{out_dir}/results.csv", name, problem.id_function, problem.id_instance, seed, x, y)
-                
-                save_trajectory(f"{directory}/trajectory_{seed}.csv", traj, problem.dimension)
-                
+                    save_best_solution(f"{out_dir}/dim_{problem.dimension}/results.csv", name, problem.id_function, problem.id_instance, seed, x, y)
+
+                if only_best:
+                    traj = best_trajectory(model)
+                    save_best_trajectory_csv(f"{directory}/gbest_trajectory_{seed}.csv", traj, problem.dimension)
+                else:
+                    traj = population_trajectory(model, pop_size)
+                    save_trajectory(f"{directory}/trajectory_{seed}.csv", traj, problem.dimension)
+                if save_diversity:
+                    div_traj = diversity_trajectory(model)
+                    save_diversity_csv(f"{directory}/diversity_{seed}.csv", div_traj)
+                    
                 print(f"  [{name}] {problem.id} | f*={result.target.fitness:.4e} | evals={problem.evaluations}")
 
             except Exception as e:
@@ -194,5 +240,3 @@ def get_suite(functions, instances, dimensions):
     )
 
     return cocoex.Suite("bbob", "", suite_filter)
-    
-

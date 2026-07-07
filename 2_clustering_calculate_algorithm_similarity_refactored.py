@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser(prog='Clustering on meta-heuristic algorithm\'s
 parser.add_argument('-c', choices=['kmeans', 'dbscan'], help="Choose the clustering method")
 args = parser.parse_args()
 if args.c == 'kmeans':
-    CLUSTER_FEATURES_DIR = f'data/clustering_features_20_algorithms_kmeans/'
+    CLUSTER_FEATURES_DIR = f'data/clustering_latest/'
 else:
     CLUSTER_FEATURES_DIR = f'data/clustering_features_10_algorithms_dbscan/'
 
@@ -61,7 +61,6 @@ def compute_trajectory_similarities(directory):
     for file in tqdm(os.listdir(directory)):
         file_loc = f'{directory}/{file}'
 
-        # Skip anything that is not a regular file (e.g. sub-directories)
         if not os.path.isfile(file_loc):
             continue
         

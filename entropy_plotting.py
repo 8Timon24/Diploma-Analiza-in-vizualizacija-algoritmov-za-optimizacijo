@@ -149,7 +149,16 @@ def plot_entropy_overlay(all_entropy_by_dim, functions_of_interest, dims, output
 
 
 if __name__ == '__main__':
-    PLOT_ALGORITHMS = None
+    PLOT_ALGORITHMS = [
+    "OriginalDE",      # DE family baseline (classic, well-understood)
+    "L_SHADE",         # DE family, advanced (adaptive) - contrast within DE
+    "OriginalGWO",     # GWO family
+    "OriginalWOA",     # WOA family
+    "AugmentedAEO",    # AEO family (your notes flag it for distinctive/premature-convergence behavior)
+    "OriginalHC",      # hill climbing - a deliberately simple/exploitative outlier
+    "OriginalMFO",     # standalone, was a behavioral extreme in your MDS
+    "WhaleFOA",        # standalone, was the lone outlier in your return-rate MDS
+]
 
     for d in DIMENSIONS:
         entropy_csv = f'{ENTROPY_DATA_DIR}/entropy_dim_{d}.csv'
@@ -163,3 +172,4 @@ if __name__ == '__main__':
         all_entropy = pd.read_csv(entropy_csv)
         plot_entropy_by_function_group(all_entropy, output_dir, FUNCTION_GROUPS, algorithms=PLOT_ALGORITHMS)
         plot_entropy_clustermap(all_entropy, output_dir, algorithms=PLOT_ALGORITHMS)
+        plot_entropy_per_function(all_entropy, output_dir, d, algorithms=PLOT_ALGORITHMS)

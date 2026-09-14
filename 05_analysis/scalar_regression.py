@@ -6,11 +6,10 @@ pairwise metric suite.
 
 Motivation
 ----------
-The pairwise metrics (entropy difference, revisit distance, exploration
-difference, ...) are built on top of per-algorithm scalars:
+The pairwise metrics (entropy difference, exploration difference, ...) are
+built on top of per-algorithm scalars:
 
     H_a   Shannon entropy of the discretised search trajectory
-    R_a   revisit rate
     E_a   exploration / exploitation ratio
 
 Regressing H_a against E_a over the 28 algorithms answers the question you
@@ -29,9 +28,9 @@ Expected input
 --------------
 A tidy CSV with one row per (dim, func, algo) and one column per scalar:
 
-    dim,func,algo,entropy,revisit_rate,exploration
-    2,f1,JADE,3.71,0.042,0.63
-    2,f1,L-SHADE,3.55,0.051,0.58
+    dim,func,algo,entropy,exploration,fitness
+    2,f1,JADE,3.71,0.63,0.006
+    2,f1,L-SHADE,3.55,0.58,0.011
     ...
 
 `load_scalars` also accepts the long form (dim, func, algo, metric, value) and

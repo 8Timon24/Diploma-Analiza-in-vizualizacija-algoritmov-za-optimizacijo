@@ -1,5 +1,5 @@
 """
-End-to-end smoke test: runs the ENTIRE real pipeline (all 15 run_pipeline.py
+End-to-end smoke test: runs the ENTIRE real pipeline (all run_pipeline.py
 steps, unmodified) against a tiny synthetic sweep, writing into a throwaway
 temp directory. This is what actually exercises the step-to-step wiring
 (column names, merge keys, file formats) that the pure-function unit tests
@@ -85,7 +85,7 @@ def test_full_pipeline_end_to_end(tmp_path):
         _REPO_ROOT / "data" / "processed" / f"dim_{d}",
         _REPO_ROOT / "data" / "clustering_latest" / "cluster_distributions" / f"dim_{d}",
         *[_REPO_ROOT / "metrics_data" / m / f"dim_{d}"
-          for m in ("entropy", "cosine", "cosine_columns", "exploration", "location", "fitness", "return_rate")],
+          for m in ("entropy", "cosine", "cosine_columns", "exploration", "location", "fitness")],
     ]
     before_snapshot = {
         str(p): sorted((f.name, f.stat().st_mtime) for f in p.iterdir() if f.is_file())
@@ -128,7 +128,6 @@ def test_full_pipeline_end_to_end(tmp_path):
         "exploration": ("Mean_exploration_difference", "exploration"),
         "location": ("Location_difference", "location"),
         "fitness": ("Fitness_difference", "fitness"),
-        "return_rate": ("Revisit_distance", "return_rate"),
     }
     for subdir, (value_col, _) in metric_files.items():
         for f in TEST_FUNCTIONS:

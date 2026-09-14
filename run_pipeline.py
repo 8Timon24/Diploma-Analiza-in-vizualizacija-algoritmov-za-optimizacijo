@@ -63,14 +63,6 @@ STEPS = [
      [sys.executable, str(ROOT / "04_metrics" / "entropy_pairwise.py")],
      "Pairwise entropy-difference metric."),
 
-    ("return_rate_calc",
-     [sys.executable, str(ROOT / "04_metrics" / "return_rate.py")],
-     "Compute the revisiting history + revisit-rate matrices."),
-
-    ("return_rate_pairwise",
-     [sys.executable, str(ROOT / "04_metrics" / "return_rate_pairwise.py")],
-     "Pairwise revisit-rate metric (granular)."),
-
     ("cosine_pairwise",
      [sys.executable, str(ROOT / "04_metrics" / "cosine_pairwise.py")],
      "Pairwise global cosine distance."),

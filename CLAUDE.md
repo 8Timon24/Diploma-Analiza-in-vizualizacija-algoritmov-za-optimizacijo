@@ -26,7 +26,6 @@ Pipeline scripts live in numbered stage folders that mirror the run order end to
 02_preprocess/  preprocess_data.py
 03_cluster/     cluster_trajectories.py, cluster_similarity.py
 04_metrics/     entropy.py, entropy_pairwise.py, entropy_plotting.py,
-                return_rate.py, return_rate_pairwise.py, return_rate_plotting.py,
                 cosine_pairwise.py, cosine_columns_pairwise.py,
                 exploration_pairwise.py, solutions_pairwise.py
 05_analysis/    merge_metrics.py, spearman.py, scalar_regression.py,
@@ -59,20 +58,21 @@ Step order and what each stage produces (see `STEPS` in `run_pipeline.py` for th
 4. **clustering** (`03_cluster/cluster_trajectories.py -c kmeans`) — KMeans-clusters trajectories per problem file (elbow method picks k from powers of 2, 4..512). Writes `cluster_centers/`, `clustering_results/` (parquet), `cluster_distributions/` (per-iteration cluster occupancy counts) under `data/clustering_latest/` (or `data/clustering_features_*_dbscan/` for `-c dbscan`/`dbscan_adaptive`).
 5. **aggregate_cosine** (`03_cluster/cluster_similarity.py -c kmeans`) — aggregate cosine similarity between algorithm trajectory vectors, for clustermap figures.
 6. **entropy_calc** / **entropy_pairwise** (`04_metrics/entropy.py`, `04_metrics/entropy_pairwise.py`) — Shannon entropy (normalized, H/ln k) of cluster occupancy per algorithm/run/iteration, then a pairwise difference measure between algorithms.
-7. **return_rate_calc** / **return_rate_pairwise** (`04_metrics/return_rate.py`, `04_metrics/return_rate_pairwise.py`) — detects "revisit" events (an already-visited cluster becoming active again) and a Jaccard-based shared-revisit-rate between algorithm pairs.
-8. **cosine_pairwise** / **cosine_columns_pairwise** (`04_metrics/cosine_pairwise.py`, `04_metrics/cosine_columns_pairwise.py`) — global and per-cluster-column pairwise cosine distance between algorithms.
-9. **exploration_pairwise** (`04_metrics/exploration_pairwise.py`) — pairwise difference in exploration/exploitation balance.
-10. **solutions_pairwise** (`04_metrics/solutions_pairwise.py`) — pairwise difference in final solution location/fitness.
-11. **merge** (`05_analysis/merge_metrics.py`) — outer-joins **every** metric found under `metrics_data/*/dim_{d}/` (including `return_rate`) on the shared keys into `metrics_data/merged/merged_dim_{d}.csv`. This is the canonical "all metrics" table.
-12. **spearman** (`05_analysis/spearman.py`) — inner-joins only the metrics in its own `METRICS` list (currently excludes `return_rate`), computes the Spearman correlation matrix between them per dimension, and saves the matrix to `metrics_data/merged/spearman_dim_{d}.csv` and a heatmap to `figures_spearman/`. Its own working table is `metrics_data/merged/spearman_input_dim_{d}.csv` — a **different file** from step 11's `merged_dim_{d}.csv`, on purpose: both scripts used to write to the same `merged_dim_{d}.csv`, and since "spearman" always runs right after "merge", it silently clobbered merge_metrics.py's more complete output with its own narrower one on every real run (confirmed in the user's existing data). Don't reintroduce that collision if editing either script's output path.
+7. **cosine_pairwise** / **cosine_columns_pairwise** (`04_metrics/cosine_pairwise.py`, `04_metrics/cosine_columns_pairwise.py`) — global and per-cluster-column pairwise cosine distance between algorithms.
+8. **exploration_pairwise** (`04_metrics/exploration_pairwise.py`) — pairwise difference in exploration/exploitation balance.
+9. **solutions_pairwise** (`04_metrics/solutions_pairwise.py`) — pairwise difference in final solution location/fitness.
+10. **merge** (`05_analysis/merge_metrics.py`) — outer-joins **every** metric found under `metrics_data/*/dim_{d}/` on the shared keys into `metrics_data/merged/merged_dim_{d}.csv`. This is the canonical "all metrics" table.
+11. **spearman** (`05_analysis/spearman.py`) — inner-joins only the metrics in its own `METRICS` list, computes the Spearman correlation matrix between them per dimension, and saves the matrix to `metrics_data/merged/spearman_dim_{d}.csv` and a heatmap to `figures_spearman/`. Its own working table is `metrics_data/merged/spearman_input_dim_{d}.csv` — a **different file** from step 10's `merged_dim_{d}.csv`, on purpose: both scripts used to write to the same `merged_dim_{d}.csv`, and since "spearman" always runs right after "merge", it silently clobbered merge_metrics.py's more complete output with its own narrower one on every real run. Don't reintroduce that collision if editing either script's output path.
 
-Two plotting scripts (`04_metrics/entropy_plotting.py`, `04_metrics/return_rate_plotting.py`) aren't `run_pipeline.py` steps — run them manually after their calc-stage counterpart to render figures.
+A `04_metrics/entropy_plotting.py` plotting script isn't a `run_pipeline.py` step — run it manually after `entropy_calc` to render figures.
+
+Note: a "return rate" / "shared revisit rate" metric (detecting when an algorithm revisits an already-explored cluster) used to be part of this pipeline (`return_rate.py`, `return_rate_pairwise.py`, `return_rate_plotting.py`, a `data/return_rate/` stage, and a `return_rate` column in `merged_dim_{d}.csv`). It was removed as unneeded — if you see stray references to it in old notes/branches, they're stale.
 
 All per-metric pairwise CSVs under `metrics_data/<metric>/dim_{d}/F{f}_I{i}.csv` share the same key columns — `config.METRIC_KEYS` = `['Algorithm1', 'Algorithm2', 'Function_id', 'Instance_id', 'Run_id']` — plus exactly one metric-value column, which is what lets `merge_metrics.py`/`spearman.py` join them generically (they auto-detect the value column as "whatever isn't a key column"). `Function_id`/`Instance_id` may be written as `1` or as `"F1"`/`"I1"` depending on which script wrote the file; always pass values through `config.normalize_keys()` before comparing/joining across metrics.
 
 ## config.py
 
-Single source of truth for the algorithm list (`ALGORITHMS_OF_INTEREST`, 28 names), the benchmark sweep (`DIMENSIONS`, `FUNCTIONS`, `INSTANCES`, `SEEDS`), every data/output/figures directory, the pairwise-metric CSV schema (`METRIC_KEYS`, `normalize_keys()`), and English `METRIC_LABELS` for figures. Every pipeline/metrics/analysis script imports the values it needs from here (often aliased on import to match the script's existing local variable name, e.g. `from config import RETURN_RATE_DATA_DIR as RR_DATA_DIR`) instead of redeclaring them. When adding or removing an algorithm from the analysis, change it in `config.py` only.
+Single source of truth for the algorithm list (`ALGORITHMS_OF_INTEREST`, 28 names), the benchmark sweep (`DIMENSIONS`, `FUNCTIONS`, `INSTANCES`, `SEEDS`), every data/output/figures directory, the pairwise-metric CSV schema (`METRIC_KEYS`, `normalize_keys()`), and English `METRIC_LABELS` for figures. Every pipeline/metrics/analysis script imports the values it needs from here (often aliased on import to match the script's existing local variable name, e.g. `from config import CLUSTER_DISTRIBUTIONS_LATEST as INPUT_DIR`) instead of redeclaring them. When adding or removing an algorithm from the analysis, change it in `config.py` only.
 
 ## Testing
 
@@ -80,15 +80,15 @@ Single source of truth for the algorithm list (`ALGORITHMS_OF_INTEREST`, 28 name
 
 ```bash
 # fast unit tests for the pure metric functions (normalize_keys, column_cosine_distance,
-# revisiting_history, compute_entropy/aggregate_from_granular) - synthetic fixtures, no
-# real data or cocoex dependency, ~2s total:
+# compute_entropy/aggregate_from_granular) - synthetic fixtures, no real data or cocoex
+# dependency, ~2s total:
 python -m pytest tests/
 
 # some pipeline scripts execute their real computation unconditionally at import time
 # (no `if __name__ == "__main__":` guard) - never import a name from one of these for a
 # test without first checking it has the guard, or the import itself runs the real thing.
 
-# end-to-end smoke test: runs the ENTIRE real pipeline (all 15 run_pipeline.py steps,
+# end-to-end smoke test: runs the ENTIRE real pipeline (all run_pipeline.py steps,
 # real mealpy/cocoex optimization + real KMeans clustering) against a tiny synthetic
 # 2-algorithm/2-function sweep, isolated to a temp dir via config.py's PIPELINE_TEST_*
 # env vars (see config.py's docstring) - never touches the real data/outputs/metrics_data.

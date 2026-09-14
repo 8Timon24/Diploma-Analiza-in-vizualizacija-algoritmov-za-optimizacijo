@@ -68,7 +68,6 @@ CLUSTERING_LATEST_DIR = f"{DATA_DIR}/clustering_latest"
 CLUSTER_DISTRIBUTIONS_LATEST = f"{CLUSTERING_LATEST_DIR}/cluster_distributions"
 CLUSTERING_DBSCAN_DIR = f"{DATA_DIR}/clustering_features_10_algorithms_dbscan"
 ENTROPY_DATA_DIR = f"{DATA_DIR}/entropy"
-RETURN_RATE_DATA_DIR = f"{DATA_DIR}/return_rate"
 
 METRICS_DIR = str(REPO_ROOT / "metrics_data")               # per-metric pairwise CSVs
 MERGED_DIR = f"{METRICS_DIR}/merged"
@@ -78,7 +77,6 @@ SIMILARITY_OUTPUT_SUBDIR = "algorithm_pairwise_similarity"
 # Figure output directories (also absolute, for the same reason as above).
 FIGURES_ENTROPY_DIR = str(REPO_ROOT / "figures_entropy")
 FIGURES_SPEARMAN_DIR = str(REPO_ROOT / "figures_spearman")
-FIGURES_REVISITING_DIR = str(REPO_ROOT / "figures_revisiting")
 FIGURES_RESULTS_DIR = str(REPO_ROOT / "figures_results")
 
 # --- Pairwise-metric CSV schema: metrics_data/<metric>/dim_{d}/F{f}_I{i}.csv ---

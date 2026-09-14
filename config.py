@@ -13,14 +13,31 @@ resolve against whatever directory the caller's shell happens to be in, and
 create a wrong, nested copy if someone `cd`s into a subfolder first. Anchoring
 to REPO_ROOT makes every script write to the real top-level folders no matter
 where it's invoked from.
+
+Test isolation: REPO_ROOT and the sweep parameters below can each be
+overridden by an environment variable (PIPELINE_TEST_ROOT, and a
+PIPELINE_TEST_* variable per sweep list, JSON-encoded). tests/test_pipeline_smoke.py
+uses this to point an entire real pipeline run at a throwaway temp directory
+with a tiny synthetic sweep, without ever touching the real data/outputs/
+metrics_data or running the real 28-algorithm/24-function universe. These
+variables are unset in normal use, so this never changes real behavior.
 """
 
+import json
+import os
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent
+_root_override = os.environ.get("PIPELINE_TEST_ROOT")
+REPO_ROOT = Path(_root_override).resolve() if _root_override else Path(__file__).resolve().parent
+
+
+def _list_override(env_var, default):
+    raw = os.environ.get(env_var)
+    return json.loads(raw) if raw is not None else default
+
 
 # --- Algorithms under study (mealpy optimizer class names) ---
-ALGORITHMS_OF_INTEREST = [
+ALGORITHMS_OF_INTEREST = _list_override("PIPELINE_TEST_ALGORITHMS", [
     "AugmentedAEO", "GWO_WOA",
     "HI_WOA", "IGWO",
     "ImprovedBSO", "JADE",
@@ -35,13 +52,13 @@ ALGORITHMS_OF_INTEREST = [
     "OriginalSSA", "OriginalSSpiderA",
     "OriginalWOA", "RW_GWO",
     "SADE", "WhaleFOA",
-]
+])
 
 # --- BBOB benchmark sweep parameters ---
-DIMENSIONS = [2, 5, 10]
-FUNCTIONS = list(range(1, 25))
-INSTANCES = list(range(1, 6))
-SEEDS = [1, 2, 3, 4, 5]
+DIMENSIONS = _list_override("PIPELINE_TEST_DIMENSIONS", [2, 5, 10])
+FUNCTIONS = _list_override("PIPELINE_TEST_FUNCTIONS", list(range(1, 25)))
+INSTANCES = _list_override("PIPELINE_TEST_INSTANCES", list(range(1, 6)))
+SEEDS = _list_override("PIPELINE_TEST_SEEDS", [1, 2, 3, 4, 5])
 
 # --- Directory layout (all ABSOLUTE, anchored to REPO_ROOT - see module docstring) ---
 OUTPUTS_DIR = str(REPO_ROOT / "outputs")                    # raw per-run benchmark trajectories

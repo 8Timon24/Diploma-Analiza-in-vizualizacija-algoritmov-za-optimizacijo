@@ -33,7 +33,7 @@ Pipeline scripts live in numbered stage folders that mirror the run order end to
                 and all the exploratory *.ipynb notebooks
 scratch/        one-off diagnostic/debug scripts (preveri_*.py, poisci_pare_clustopt.py,
                 slika_dodana_vrednost.py, testing.py) — not part of the pipeline
-tests/          test_cosine_rr.py, test_shared_revisit_rate.py, test_spearman.py
+tests/          pytest unit tests (test_*.py) + smoke_test_pipeline.py (see Testing below)
 ```
 
 `config.py`, `utils.py`, `helper_functions.py`, and `run_pipeline.py` stay at the repo root since they're shared across every stage. Every moved script starts with a small `sys.path.insert(0, ...)` shim pointing at the repo root so `from config import ...` (and similar) resolves regardless of how the script is invoked — this is deliberate, not leftover cruft.
@@ -63,8 +63,8 @@ Step order and what each stage produces (see `STEPS` in `run_pipeline.py` for th
 8. **cosine_pairwise** / **cosine_columns_pairwise** (`04_metrics/cosine_pairwise.py`, `04_metrics/cosine_columns_pairwise.py`) — global and per-cluster-column pairwise cosine distance between algorithms.
 9. **exploration_pairwise** (`04_metrics/exploration_pairwise.py`) — pairwise difference in exploration/exploitation balance.
 10. **solutions_pairwise** (`04_metrics/solutions_pairwise.py`) — pairwise difference in final solution location/fitness.
-11. **merge** (`05_analysis/merge_metrics.py`) — outer-joins every metric in `metrics_data/*/dim_{d}/` on the shared keys into `metrics_data/merged/merged_dim_{d}.csv`.
-12. **spearman** (`05_analysis/spearman.py`) — inner-joins the same metrics, computes the Spearman correlation matrix between them per dimension, saves `metrics_data/merged/spearman_dim_{d}.csv` and a heatmap to `figures_spearman/`.
+11. **merge** (`05_analysis/merge_metrics.py`) — outer-joins **every** metric found under `metrics_data/*/dim_{d}/` (including `return_rate`) on the shared keys into `metrics_data/merged/merged_dim_{d}.csv`. This is the canonical "all metrics" table.
+12. **spearman** (`05_analysis/spearman.py`) — inner-joins only the metrics in its own `METRICS` list (currently excludes `return_rate`), computes the Spearman correlation matrix between them per dimension, and saves the matrix to `metrics_data/merged/spearman_dim_{d}.csv` and a heatmap to `figures_spearman/`. Its own working table is `metrics_data/merged/spearman_input_dim_{d}.csv` — a **different file** from step 11's `merged_dim_{d}.csv`, on purpose: both scripts used to write to the same `merged_dim_{d}.csv`, and since "spearman" always runs right after "merge", it silently clobbered merge_metrics.py's more complete output with its own narrower one on every real run (confirmed in the user's existing data). Don't reintroduce that collision if editing either script's output path.
 
 Two plotting scripts (`04_metrics/entropy_plotting.py`, `04_metrics/return_rate_plotting.py`) aren't `run_pipeline.py` steps — run them manually after their calc-stage counterpart to render figures.
 
@@ -73,6 +73,29 @@ All per-metric pairwise CSVs under `metrics_data/<metric>/dim_{d}/F{f}_I{i}.csv`
 ## config.py
 
 Single source of truth for the algorithm list (`ALGORITHMS_OF_INTEREST`, 28 names), the benchmark sweep (`DIMENSIONS`, `FUNCTIONS`, `INSTANCES`, `SEEDS`), every data/output/figures directory, the pairwise-metric CSV schema (`METRIC_KEYS`, `normalize_keys()`), and English `METRIC_LABELS` for figures. Every pipeline/metrics/analysis script imports the values it needs from here (often aliased on import to match the script's existing local variable name, e.g. `from config import RETURN_RATE_DATA_DIR as RR_DATA_DIR`) instead of redeclaring them. When adding or removing an algorithm from the analysis, change it in `config.py` only.
+
+## Testing
+
+`pytest` is installed in the venv but not yet in `requirements.txt` (gitignored; `pip install pytest` if missing).
+
+```bash
+# fast unit tests for the pure metric functions (normalize_keys, column_cosine_distance,
+# revisiting_history, compute_entropy/aggregate_from_granular) - synthetic fixtures, no
+# real data or cocoex dependency, ~2s total:
+python -m pytest tests/
+
+# some pipeline scripts execute their real computation unconditionally at import time
+# (no `if __name__ == "__main__":` guard) - never import a name from one of these for a
+# test without first checking it has the guard, or the import itself runs the real thing.
+
+# end-to-end smoke test: runs the ENTIRE real pipeline (all 15 run_pipeline.py steps,
+# real mealpy/cocoex optimization + real KMeans clustering) against a tiny synthetic
+# 2-algorithm/2-function sweep, isolated to a temp dir via config.py's PIPELINE_TEST_*
+# env vars (see config.py's docstring) - never touches the real data/outputs/metrics_data.
+# Deliberately NOT named test_*.py so `pytest tests/` above doesn't pick it up - run it
+# explicitly (takes ~15s, not part of the fast suite):
+python -m pytest tests/smoke_test_pipeline.py -v -s
+```
 
 ## Common commands
 
@@ -83,9 +106,4 @@ python 03_cluster/cluster_similarity.py -c kmeans
 
 # run the benchmark for a subset (fast iteration on one algorithm/function):
 python 01_optimize/run_benchmarks.py -a OriginalGWO -f 1 -d 2 -i 1 -s 1
-
-# tests are plain scripts (no pytest) - run directly, they assert + print PASS/FAIL:
-python tests/test_shared_revisit_rate.py
-python tests/test_spearman.py
-python tests/test_cosine_rr.py
 ```

@@ -9,7 +9,7 @@ import cocoex
 import argparse
 from helper_functions import run_benchmarks, get_optimizers_safe, get_suite
 from concurrent.futures import ProcessPoolExecutor
-from config import ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES, SEEDS
+from config import ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES, SEEDS, OUTPUTS_DIR
 
 def run_benchmarks_all_seeds(function_ids, instance_ids, dimensions, optimizers, out_dir, seeds, epoch_per_dim, pop_size, only_best, save_diversity):
     observer = cocoex.Observer("no_observer", "")
@@ -82,7 +82,7 @@ if __name__ == "__main__":
         with ProcessPoolExecutor() as executor:
             for d in dimensions:
                 executor.submit(run_benchmarks_all_seeds, function_ids, instance_ids, [d], 
-                                optimizers_filtered, "outputs", seeds, EPOCH_PER_DIM, 50, best, save_diversity)
+                                optimizers_filtered, OUTPUTS_DIR, seeds, EPOCH_PER_DIM, 50, best, save_diversity)
     elif parallelization == 'f':
         print(f"\n{'='*50}")
         print(f"Parallelizing over {len(function_ids)} functions: {function_ids}")
@@ -90,7 +90,7 @@ if __name__ == "__main__":
         with ProcessPoolExecutor() as executor:
             for f_id in function_ids:
                 executor.submit(run_benchmarks_all_seeds, [f_id], instance_ids, dimensions, 
-                                optimizers_filtered, "outputs", seeds, EPOCH_PER_DIM, 50, best, save_diversity)
+                                optimizers_filtered, OUTPUTS_DIR, seeds, EPOCH_PER_DIM, 50, best, save_diversity)
     elif parallelization == 'i':
         print(f"\n{'='*50}")
         print(f"Parallelizing over {len(instance_ids)} instances: {instance_ids}")
@@ -98,7 +98,7 @@ if __name__ == "__main__":
         with ProcessPoolExecutor() as executor:
             for i_id in instance_ids:
                 executor.submit(run_benchmarks_all_seeds, function_ids, [i_id], dimensions, 
-                                optimizers_filtered, "outputs", seeds, EPOCH_PER_DIM, 50, best, save_diversity)
+                                optimizers_filtered, OUTPUTS_DIR, seeds, EPOCH_PER_DIM, 50, best, save_diversity)
     elif parallelization == 'a':
         print(f"\n{'='*50}")
         print(f"Parallelizing over {len(optimizers_filtered)} algorithms: {list(optimizers_filtered.keys())}")
@@ -106,7 +106,7 @@ if __name__ == "__main__":
         with ProcessPoolExecutor() as executor:
             for name, optimizer in optimizers_filtered.items():
                 executor.submit(run_benchmarks_all_seeds, function_ids, instance_ids, dimensions, 
-                                {name:optimizer}, "outputs", seeds, EPOCH_PER_DIM, 50, best, save_diversity)
+                                {name:optimizer}, OUTPUTS_DIR, seeds, EPOCH_PER_DIM, 50, best, save_diversity)
     elif parallelization == 's':
         print(f"\n{'='*50}")
         print(f"Parallelizing over {len(seeds)} seeds: {seeds}")
@@ -114,14 +114,14 @@ if __name__ == "__main__":
         with ProcessPoolExecutor() as executor:
             for seed in seeds:
                 executor.submit(run_benchmarks_all_seeds, function_ids, instance_ids, dimensions, 
-                                optimizers_filtered, "outputs", seeds, EPOCH_PER_DIM, 50, best, save_diversity)
+                                optimizers_filtered, OUTPUTS_DIR, seeds, EPOCH_PER_DIM, 50, best, save_diversity)
     else:
         print(f"\n{'='*50}")
         print("Running sequentially (no parallelization)")
         print(f"{'='*50}")
         for seed in seeds:
             run_benchmarks(suite=suite, observer=observer, optimizers=optimizers_filtered,
-                        out_dir="outputs", seed=seed, epoch_per_dim=EPOCH_PER_DIM, pop_size=50, only_best=best, save_diversity=save_diversity)
+                        out_dir=OUTPUTS_DIR, seed=seed, epoch_per_dim=EPOCH_PER_DIM, pop_size=50, only_best=best, save_diversity=save_diversity)
     
     print(f"{'='*50}")
     print("FINISHED")

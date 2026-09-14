@@ -105,7 +105,12 @@ if __name__ == '__main__':
         print(f"merged shape: {merged.shape}")
         print(f"NaNs:\n{merged[present].isna().sum().to_dict()}")
 
-        merged.to_csv(f'{MERGED_DIR}/merged_dim_{dim}.csv', index=False)
+        # Written under its own name, NOT merged_dim_{dim}.csv - that file is
+        # merge_metrics.py's outer-joined, all-metrics output (metrics.py's
+        # "merge" step runs right before this one); this is only the
+        # narrower inner join spearman.py itself correlates over, restricted
+        # to METRICS above and to rows where every one of them is present.
+        merged.to_csv(f'{MERGED_DIR}/spearman_input_dim_{dim}.csv', index=False)
 
         corr = merged[present].corr(method='spearman')
         corr.to_csv(f'{MERGED_DIR}/spearman_dim_{dim}.csv')
@@ -115,6 +120,6 @@ if __name__ == '__main__':
         interpret(corr, present)
         plot_spearman(corr, dim, present, OUTPUT_DIR)
         print(f"\n  saved -> {OUTPUT_DIR}/spearman_dim_{dim}.pdf")
-        print(f"  saved -> {MERGED_DIR}/merged_dim_{dim}.csv, spearman_dim_{dim}.csv")
+        print(f"  saved -> {MERGED_DIR}/spearman_input_dim_{dim}.csv, spearman_dim_{dim}.csv")
 
     print("\nDONE")

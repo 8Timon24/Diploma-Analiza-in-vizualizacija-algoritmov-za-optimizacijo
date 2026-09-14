@@ -1,6 +1,15 @@
+# Unit tests (plain assert, run directly) for shared_revisit_rate() in
+# 04_metrics/return_rate.py: unweighted/weighted Jaccard, disjoint/empty
+# edge cases, and identical algorithms.
+import sys
+from pathlib import Path
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_REPO_ROOT))
+sys.path.insert(0, str(_REPO_ROOT / "04_metrics"))
+
 import pandas as pd
 import numpy as np
-from return_rate_calculation import shared_revisit_rate
+from return_rate import shared_revisit_rate
 
 
 def make_history(events):

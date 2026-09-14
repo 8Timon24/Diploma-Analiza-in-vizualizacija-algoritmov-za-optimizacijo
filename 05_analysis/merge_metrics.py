@@ -1,24 +1,18 @@
+# Pipeline step "merge": outer-joins every metric under metrics_data/*/dim_{d}/
+# on the shared keys into metrics_data/merged/merged_dim_{d}.csv.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import numpy as np
 import os
 from tqdm import tqdm
 from functools import reduce
-
-metrics_dir = 'metrics_data'
-KEYS = ['Algorithm1', 'Algorithm2', 'Function_id', 'Instance_id', 'Run_id']
+from config import METRIC_KEYS as KEYS, normalize_keys, METRICS_DIR as metrics_dir, MERGED_DIR
 
 # The metric-value column is the one column in each file that ISN'T a key.
 # We rename it to the metric name so columns don't collide after merging.
-def normalize_keys(df):
-    # Function_id / Instance_id may be int (1) or str ("F1"/"I1") depending on
-    # which pairwise script wrote the file - coerce both to plain ints so the
-    # merge keys line up across all metrics.
-    for col, prefix in [('Function_id', 'F'), ('Instance_id', 'I')]:
-        if col in df.columns:
-            df[col] = df[col].astype(str).str.replace(prefix, '', regex=False).astype(int)
-    if 'Run_id' in df.columns:
-        df['Run_id'] = df['Run_id'].astype(int)
-    return df
 # ---- 1. collect: {dim: {metric: concatenated_dataframe}} ----
 per_dim_metric = {}   # per_dim_metric[dim][metric] = df with keys + one value col
 
@@ -65,6 +59,6 @@ for dim, metric_dict in per_dim_metric.items():
     merged_by_dim[dim] = merged
     print(f"\ndim {dim}: merged shape {merged.shape}, metrics: {list(metric_dict.keys())}")
     # save
-    os.makedirs('metrics_data/merged', exist_ok=True)
-    merged.to_csv(f'metrics_data/merged/merged_dim_{dim}.csv', index=False)
-    print(f"  saved -> metrics_data/merged/merged_dim_{dim}.csv")
+    os.makedirs(MERGED_DIR, exist_ok=True)
+    merged.to_csv(f'{MERGED_DIR}/merged_dim_{dim}.csv', index=False)
+    print(f"  saved -> {MERGED_DIR}/merged_dim_{dim}.csv")

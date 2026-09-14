@@ -1,28 +1,19 @@
+# Pipeline step "cosine_pairwise": global cosine distance between every pair
+# of algorithms' flattened cluster-occupancy vectors, per run.
+# Writes metrics_data/cosine/dim_{d}/F{f}_I{i}.csv.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import numpy as np
 import pandas as pd
 import os
 from itertools import combinations
 from sklearn.metrics.pairwise import cosine_similarity
-
-ALGORITHMS_OF_INTEREST = ["AugmentedAEO", "GWO_WOA",
-    "HI_WOA", "IGWO",
-    "ImprovedBSO", "JADE",
-    "L_SHADE", "LevyTWO",
-    "ModifiedAEO", "OriginalAEO",
-    "OriginalALO", "OriginalCSA",
-    "OriginalDE", "OriginalFPA",
-    "OriginalGWO", "OriginalHC",
-    "OriginalHHO", "OriginalMFO",
-    "OriginalMPA", "OriginalMRFO",
-    "OriginalNMRA", "OriginalSHADE",
-    "OriginalSSA", "OriginalSSpiderA",
-    "OriginalWOA", "RW_GWO",
-    "SADE", "WhaleFOA"]
-
-DIMENSIONS = [2, 5, 10]
-RUNS = [i for i in range(1, 6)]
-INPUT_DIR = 'data/clustering_latest/cluster_distributions'
-OUTPUT_DIR = "metrics_data"
+from config import (
+    ALGORITHMS_OF_INTEREST, DIMENSIONS, SEEDS as RUNS,
+    CLUSTER_DISTRIBUTIONS_LATEST as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
+)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 algorithm_pairs = list(combinations(sorted(ALGORITHMS_OF_INTEREST), 2))

@@ -1,3 +1,10 @@
+# Pipeline step "clustering": KMeans- (or DBSCAN-) clusters each problem's
+# trajectory points per dimension, and writes cluster_centers/,
+# cluster_distributions/, and clustering_results/ under the chosen data dir.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import os
 from tqdm import tqdm
@@ -17,36 +24,20 @@ import math
 import argparse
 from kneed import KneeLocator
 import itertools
+from config import ALGORITHMS_OF_INTEREST, DIMENSIONS, CLUSTERING_LATEST_DIR, CLUSTERING_DBSCAN_DIR, PROCESSED_DIR
 
 ALL_REMOVED_ALGORITHMS = get_removed_algorithms()
-# The specific subset of algorithms we want to cluster
-ALGORITHMS_OF_INTEREST = ["AugmentedAEO", "GWO_WOA",
-                           "HI_WOA", "IGWO",
-                           "ImprovedBSO", "JADE",
-                           "L_SHADE", "LevyTWO",
-                           "ModifiedAEO", "OriginalAEO",
-                           "OriginalALO", "OriginalCSA",
-                           "OriginalDE", "OriginalFPA",
-                           "OriginalGWO", "OriginalHC",
-                           "OriginalHHO", "OriginalMFO",
-                           "OriginalMPA", "OriginalMRFO",
-                           "OriginalNMRA", "OriginalSHADE",
-                           "OriginalSSA", "OriginalSSpiderA",
-                           "OriginalWOA", "RW_GWO",
-                           "SADE", "WhaleFOA"]
-# Dimensions to process
-DIMENSIONS = [2, 5, 10]
-#Arguements to distinguish the type of clustering we want to do
+# Arguments to distinguish the type of clustering we want to do
 parser = argparse.ArgumentParser(prog='Clustering on meta-heuristic algorithm\'s trajectories', usage='%(prog)s [options]')
 parser.add_argument('-c', choices=['kmeans', 'dbscan', 'dbscan_adaptive'], help="Choose the clustering method")
 args = parser.parse_args()
 
 if args.c == 'kmeans':
-    DATA_DIR = f'data/clustering_latest/'
+    DATA_DIR = f'{CLUSTERING_LATEST_DIR}/'
 elif args.c == 'dbscan':
-    DATA_DIR = f'data/clustering_features_10_algorithms_dbscan/'
+    DATA_DIR = f'{CLUSTERING_DBSCAN_DIR}/'
 elif args.c == 'dbscan_adaptive':
-    DATA_DIR = f'data/clustering_features_10_algorithms_dbscan/adaptive/'
+    DATA_DIR = f'{CLUSTERING_DBSCAN_DIR}/adaptive/'
 
 def determine_number_of_clusters(X):
     """
@@ -491,7 +482,7 @@ def process_dimension(dimension, data_dir, all_removed_algorithms, algorithms_of
     """
     create_output_directories(data_dir, dimension)
 
-    input_dir = f'data/processed/dim_{dimension}'
+    input_dir = f'{PROCESSED_DIR}/dim_{dimension}'
     for filename in tqdm(os.listdir(input_dir)):
         filepath = f'{input_dir}/{filename}'
         print("Clustering: " + filepath)

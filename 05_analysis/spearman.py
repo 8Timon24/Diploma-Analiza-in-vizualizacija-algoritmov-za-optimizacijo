@@ -1,3 +1,10 @@
+# Pipeline step "spearman": inner-joins the metrics in METRICS below on the
+# shared keys, computes the Spearman correlation matrix between them per
+# dimension, and saves the matrix + a heatmap to figures_spearman/.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import numpy as np
 import os
@@ -5,40 +12,15 @@ from tqdm import tqdm
 from functools import reduce
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-metrics_dir = 'metrics_data'
-KEYS = ['Algorithm1', 'Algorithm2', 'Function_id', 'Instance_id', 'Run_id']
-DIMENSIONS = [2, 5, 10]
-OUTPUT_DIR = 'figures_spearman'
-MERGED_DIR = 'metrics_data/merged'
+from config import (
+    METRIC_KEYS as KEYS, DIMENSIONS, MERGED_DIR, METRIC_LABELS, normalize_keys,
+    METRICS_DIR as metrics_dir, FIGURES_SPEARMAN_DIR as OUTPUT_DIR,
+)
 
 # metrics to include (folder names under metrics_data/). Excludes 'merged'.
 # Edit this list to add/drop metrics.
 METRICS = ['entropy', 'cosine', 'cosine_columns',
            'exploration', 'location', 'fitness']
-
-# Slovenian display labels - used only for figure axes, never for column names,
-# so merged_dim_*.csv / spearman_dim_*.csv stay compatible with the rest of the
-# pipeline. A metric missing from this dict falls back to its raw key.
-METRIC_LABELS_SL = {
-    'entropy': 'Entropija',
-    'cosine': 'Kosinusna razdalja',
-    'cosine_columns': 'Kosinusna razdalja po stolpcih',
-    'exploration': 'Raziskovanje',
-    'location': 'Lokacija',
-    'fitness': 'Kakovost',
-}
-
-
-def normalize_keys(df):
-    # Function_id / Instance_id may be int (1) or str ("F1"/"I1") depending on
-    # which pairwise script wrote the file - coerce both to plain ints.
-    for col, prefix in [('Function_id', 'F'), ('Instance_id', 'I')]:
-        if col in df.columns:
-            df[col] = df[col].astype(str).str.replace(prefix, '', regex=False).astype(int)
-    if 'Run_id' in df.columns:
-        df['Run_id'] = df['Run_id'].astype(int)
-    return df
 
 
 def load_metric(metric, dim):
@@ -78,14 +60,14 @@ def build_merged(dim):
 
 def plot_spearman(corr, dim, present, output_dir):
     # rename a copy for display only - `corr` itself is written to CSV unchanged
-    corr_sl = corr.rename(index=METRIC_LABELS_SL, columns=METRIC_LABELS_SL)
+    corr_disp = corr.rename(index=METRIC_LABELS, columns=METRIC_LABELS)
 
     plt.figure(figsize=(10, 8))
     # diverging colormap centered at 0 since correlations run -1..1
-    sns.heatmap(corr_sl, annot=True, fmt='.2f', cmap='coolwarm', center=0,
+    sns.heatmap(corr_disp, annot=True, fmt='.2f', cmap='coolwarm', center=0,
                 vmin=-1, vmax=1, square=True, linewidths=0.5,
-                cbar_kws={'label': 'Spearmanov \u03c1'})
-    plt.title(f'Spearmanova korelacija med merami (dimenzija {dim})')
+                cbar_kws={'label': 'Spearman \u03c1'})
+    plt.title(f'Spearman correlation between metrics (dimension {dim})')
     plt.xticks(rotation=45, ha='right')
     plt.yticks(rotation=0)
     plt.tight_layout()

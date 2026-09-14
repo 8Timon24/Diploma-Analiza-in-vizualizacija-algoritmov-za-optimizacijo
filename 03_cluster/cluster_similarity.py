@@ -1,3 +1,11 @@
+# Pipeline step "aggregate_cosine": aggregate cosine similarity between every
+# pair of algorithms' cluster-distribution vectors (mean/median across
+# problems), for the clustermap figures. Writes to
+# <clustering dir>/algorithm_pairwise_similarity/.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import os
 from tqdm import tqdm
@@ -9,19 +17,19 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from utils import *
 import argparse
+from config import DIMENSIONS, CLUSTERING_LATEST_DIR, CLUSTERING_DBSCAN_DIR
 
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-DIMENSIONS = [2, 5, 10]
 parser = argparse.ArgumentParser(prog='Clustering on meta-heuristic algorithm\'s trajectories', usage='%(prog)s [options]')
 parser.add_argument('-c', choices=['kmeans', 'dbscan'], help="Choose the clustering method")
 args = parser.parse_args()
 if args.c == 'kmeans':
-    CLUSTER_FEATURES_DIR = f'data/clustering_latest/'
+    CLUSTER_FEATURES_DIR = f'{CLUSTERING_LATEST_DIR}/'
 else:
-    CLUSTER_FEATURES_DIR = f'data/clustering_features_10_algorithms_dbscan/'
+    CLUSTER_FEATURES_DIR = f'{CLUSTERING_DBSCAN_DIR}/'
 
 # Sub-directory pattern for cluster distributions per dimension
 CLUSTER_DISTRIBUTIONS_SUBDIR = 'cluster_distributions'

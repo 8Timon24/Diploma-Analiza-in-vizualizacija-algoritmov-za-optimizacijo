@@ -1,27 +1,18 @@
+# Pipeline step "return_rate_pairwise": from the revisiting history, computes
+# a per-pair "revisit distance" (1 - Jaccard similarity of visited-cluster
+# sets) per run. Writes metrics_data/return_rate/dim_{d}/{F}_{I}.csv.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import numpy as np
 import pandas as pd
 import os
 from itertools import combinations
-
-ALGORITHMS_OF_INTEREST = ["AugmentedAEO", "GWO_WOA",
-    "HI_WOA", "IGWO",
-    "ImprovedBSO", "JADE",
-    "L_SHADE", "LevyTWO",
-    "ModifiedAEO", "OriginalAEO",
-    "OriginalALO", "OriginalCSA",
-    "OriginalDE", "OriginalFPA",
-    "OriginalGWO", "OriginalHC",
-    "OriginalHHO", "OriginalMFO",
-    "OriginalMPA", "OriginalMRFO",
-    "OriginalNMRA", "OriginalSHADE",
-    "OriginalSSA", "OriginalSSpiderA",
-    "OriginalWOA", "RW_GWO",
-    "SADE", "WhaleFOA"]
-
-DIMENSIONS = [2, 5, 10]
-RUNS = [i for i in range(1, 6)]
-INPUT_DIR = "data/return_rate"
-OUTPUT_DIR = "metrics_data"
+from config import (
+    ALGORITHMS_OF_INTEREST, DIMENSIONS, SEEDS as RUNS,
+    RETURN_RATE_DATA_DIR as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
+)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 algorithm_pairs = list(combinations(sorted(ALGORITHMS_OF_INTEREST), 2))

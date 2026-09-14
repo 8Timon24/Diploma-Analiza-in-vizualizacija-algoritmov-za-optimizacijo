@@ -1,7 +1,15 @@
+# Entry point for the "benchmark" pipeline step: runs mealpy optimizers
+# against the cocoex BBOB suite (optionally parallelized) and writes raw
+# per-run trajectories, g_best trajectories, and diversity data to outputs/.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import cocoex
 import argparse
 from helper_functions import run_benchmarks, get_optimizers_safe, get_suite
 from concurrent.futures import ProcessPoolExecutor
+from config import ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES, SEEDS
 
 def run_benchmarks_all_seeds(function_ids, instance_ids, dimensions, optimizers, out_dir, seeds, epoch_per_dim, pop_size, only_best, save_diversity):
     observer = cocoex.Observer("no_observer", "")
@@ -17,20 +25,6 @@ def run_benchmarks_all_seeds(function_ids, instance_ids, dimensions, optimizers,
 
 if __name__ == "__main__":
     optimizers, optimizer_names = get_optimizers_safe()
-    ALGORITHMS_OF_INTEREST = ["AugmentedAEO", "GWO_WOA",
-                           "HI_WOA", "IGWO",
-                           "ImprovedBSO", "JADE",
-                           "L_SHADE", "LevyTWO",
-                           "ModifiedAEO", "OriginalAEO",
-                           "OriginalALO", "OriginalCSA",
-                           "OriginalDE", "OriginalFPA",
-                           "OriginalGWO", "OriginalHC",
-                           "OriginalHHO", "OriginalMFO",
-                           "OriginalMPA", "OriginalMRFO",
-                           "OriginalNMRA", "OriginalSHADE",
-                           "OriginalSSA", "OriginalSSpiderA",
-                           "OriginalWOA", "RW_GWO",
-                           "SADE", "WhaleFOA"]
     parser = argparse.ArgumentParser(prog='Mealpy_benchmarks', usage='%(prog)s [options]',
                                      description="The program runs the bbob functions and their instances contained in cocoex bbob suite" \
                                      "on algorithms from the ClustOpt paper, with different seeds.")
@@ -53,14 +47,12 @@ if __name__ == "__main__":
                         help="Also save per-iteration diversity / exploration / exploitation")
     args = parser.parse_args()
 
-    # Defaults
-    #BaseDE->OriginalDE, SADE, JADE, SHADE->OriginalSHADE, EnchancedAEO,  
-    #ModifiedAEO, OriginalAEO, AugmentedAEO, HI_WOA, OriginalWOA
-    #outputs/{algorithm_name}/{problem_id}_{instance_id}/{visualization_type}_{random_seed}.png
-    dimensions = [2, 5, 10]
-    function_ids = list(range(1, 25))
-    instance_ids = list(range(1, 6))
-    seeds = [1, 2, 3, 4, 5]
+    # Defaults (overridable via -d/-f/-i/-s/-a below)
+    # outputs/{algorithm_name}/{problem_id}_{instance_id}/{visualization_type}_{random_seed}.png
+    dimensions = DIMENSIONS
+    function_ids = FUNCTIONS
+    instance_ids = INSTANCES
+    seeds = SEEDS
     optimizers_filtered = {name: optimizers[name] for name in ALGORITHMS_OF_INTEREST}
 
     # epoch = EPOCH_PER_DIM * problem.dimension (ClustOpt convention), computed

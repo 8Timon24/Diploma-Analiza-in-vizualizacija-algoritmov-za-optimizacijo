@@ -1,7 +1,12 @@
+# Pipeline step "preprocess": reshapes outputs/ population trajectories into
+# data/processed/dim_{d}/F{f}_I{i}.csv (the shared input format for clustering).
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import os
-dimensions = [2, 5, 10]
-base = 'outputs'
+from config import DIMENSIONS as dimensions, OUTPUTS_DIR as base, PROCESSED_DIR
 
 for d in dimensions:
     
@@ -30,12 +35,12 @@ for d in dimensions:
         
     
     result = pd.concat(frames, ignore_index=True)
-    os.makedirs(f'data/processed/dim_{d}', exist_ok=True)
-    
+    os.makedirs(f'{PROCESSED_DIR}/dim_{d}', exist_ok=True)
+
     for (pid, iid), group in result.groupby(['problem_id', 'instance_id']):  # adjust col names as needed
-        group.to_csv(f'data/processed/dim_{d}/F{pid}_I{iid}.csv', compression='zip')
+        group.to_csv(f'{PROCESSED_DIR}/dim_{d}/F{pid}_I{iid}.csv', compression='zip')
 
 
 for d in dimensions:
-    sample = pd.read_csv(f'data/processed/dim_{d}/F1_I1.csv', compression='zip', index_col=0)
+    sample = pd.read_csv(f'{PROCESSED_DIR}/dim_{d}/F1_I1.csv', compression='zip', index_col=0)
     print(f'dim {d}:', sample.shape, sample.columns.tolist())

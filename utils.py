@@ -1,3 +1,6 @@
+# Shared helpers for the clustering scripts: algorithm-family lookup,
+# per-(algorithm, run) feature aggregation, min-max rescaling, and the
+# removed-algorithms filter list.
 import pandas as pd
 import os
 from tqdm import tqdm

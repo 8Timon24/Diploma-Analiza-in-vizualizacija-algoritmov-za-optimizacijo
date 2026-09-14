@@ -1,3 +1,6 @@
+# Shared helpers for running mealpy optimizers against the cocoex BBOB suite:
+# discovering available optimizers, running/saving benchmark trajectories
+# (g_best, full population, diversity), and mealpy's built-in chart export.
 from pathlib import Path
 import numpy as np
 import csv

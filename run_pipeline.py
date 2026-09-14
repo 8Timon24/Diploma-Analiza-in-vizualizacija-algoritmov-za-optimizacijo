@@ -1,93 +1,99 @@
 """
-Orkestracijska skripta: zaporedno požene celoten cevovod priprave podatkov
-in analize, od surovih optimizacijskih zagonov do končne Spearmanove analize.
+Orchestration script: runs the entire data-preparation and analysis pipeline
+in order, from raw optimization runs to the final Spearman analysis.
 
-Vsak korak se izvede kot ločen podproces (enako, kot bi ga pognal ročno v
-terminalu), zaporedje pa se ustavi takoj, če kateri koli korak vrne napako
-(neničelno izhodno kodo) - tako se ne nadaljuje na pokvarjenih podatkih.
+Each step runs as a separate subprocess (the same as running it manually in a
+terminal), and the sequence stops immediately if any step returns an error
+(non-zero exit code) - so it doesn't continue on broken data.
 
-Uporaba:
-    python run_pipeline.py                  # poženi vse korake
-    python run_pipeline.py --from gručenje   # nadaljuj od danega koraka
-    python run_pipeline.py --only benchmark  # poženi samo en korak
-    python run_pipeline.py --dry-run         # samo izpiši ukaze, ne poganjaj
+Usage:
+    python run_pipeline.py                    # run every step
+    python run_pipeline.py --from clustering   # resume from a given step
+    python run_pipeline.py --only benchmark    # run just one step
+    python run_pipeline.py --dry-run           # print commands without running them
 
-TODO pred prvim zagonom:
-  - preveri, da so poti/imena skript in argumenti spodaj pravi za tvoje okolje
-    (posebej -c kmeans za korak gručenja, in imena pairwise skript)
-  - preveri, da so vse skripte v istem direktoriju kot ta orkestrator, ali
-    popravi poti spodaj
+The pipeline scripts live in numbered stage folders (01_optimize/, 02_preprocess/,
+03_cluster/, 04_metrics/, 05_analysis/) that mirror this exact run order - `ls` at
+the repo root shows the whole pipeline shape at a glance. No directories need to
+be created by hand beforehand: every step creates whatever output folders it
+needs (data/, outputs/, metrics_data/, figures_*/) on its own, anchored to the
+repo root regardless of the working directory this script is invoked from.
 """
 import subprocess
 import sys
 import time
 import argparse
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
 
 # ---------------------------------------------------------------------------
-# Definicija korakov: (ime, ukaz kot seznam argumentov, opis)
-# Vrstni red je pomemben - vsak korak je odvisen od izhoda prejšnjega.
+# Step definitions: (name, command as an argument list, description)
+# Order matters - each step depends on the previous step's output. The stage
+# folder a step's script lives in (01_optimize, ..., 05_analysis) reflects
+# this same order.
 # ---------------------------------------------------------------------------
 STEPS = [
     ("benchmark",
-     [sys.executable, "ClustOpts_algorithm_benchmarks.py", "-p", "a", "-e"],
-     "Zagon vseh optimizacijskih algoritmov (mealpy/cocoex) - populacijska "
-     "+ g_best trajektorija + raznolikost, epoch=10*dimenzija."),
+     [sys.executable, str(ROOT / "01_optimize" / "run_benchmarks.py"), "-p", "a", "-e"],
+     "Run all optimization algorithms (mealpy/cocoex) - population "
+     "+ g_best trajectory + diversity, epoch=10*dimension."),
 
     ("harvest_results",
-     [sys.executable, "harvest_results.py"],
-     "Gradnja results.csv iz g_best trajektorij."),
+     [sys.executable, str(ROOT / "01_optimize" / "harvest_results.py")],
+     "Build results.csv from the g_best trajectories."),
 
     ("preprocess",
-     [sys.executable, "preprocess_data.py"],
-     "Pretvorba outputs/ v data/processed/dim_{d}/F{f}_I{i}.csv (vhod za gručenje)."),
+     [sys.executable, str(ROOT / "02_preprocess" / "preprocess_data.py")],
+     "Convert outputs/ into data/processed/dim_{d}/F{f}_I{i}.csv (input for clustering)."),
 
-    ("gručenje",
-     [sys.executable, "1_clustering_calculate_selected_algorithms_refactored.py", "-c", "kmeans"],
-     "KMeans gručenje trajektorij -> cluster_centers, cluster_distributions, clustering_results."),
+    ("clustering",
+     [sys.executable, str(ROOT / "03_cluster" / "cluster_trajectories.py"), "-c", "kmeans"],
+     "KMeans-cluster the trajectories -> cluster_centers, cluster_distributions, clustering_results."),
 
-    ("agregatna_kosinusna",
-     [sys.executable, "2_clustering_calculate_algorithm_similarity_refactored.py", "-c", "kmeans"],
-     "Agregatna kosinusna podobnost (za clustermap slike)."),
+    ("aggregate_cosine",
+     [sys.executable, str(ROOT / "03_cluster" / "cluster_similarity.py"), "-c", "kmeans"],
+     "Aggregate cosine similarity (for the clustermap figures)."),
 
-    ("entropija_calc",
-     [sys.executable, "entropy_calculation.py"],
-     "Izračun entropije zasedenosti gruč (granularna + agregirana)."),
+    ("entropy_calc",
+     [sys.executable, str(ROOT / "04_metrics" / "entropy.py")],
+     "Compute cluster-occupancy entropy (granular + aggregated)."),
 
-    ("entropija_pairwise",
-     [sys.executable, "entropy_pairwise.py"],
-     "Pairwise mera razlike v entropiji."),
+    ("entropy_pairwise",
+     [sys.executable, str(ROOT / "04_metrics" / "entropy_pairwise.py")],
+     "Pairwise entropy-difference metric."),
 
     ("return_rate_calc",
-     [sys.executable, "return_rate_calculation.py"],
-     "Izračun revisiting history + matrike deleža vračanja."),
+     [sys.executable, str(ROOT / "04_metrics" / "return_rate.py")],
+     "Compute the revisiting history + revisit-rate matrices."),
 
     ("return_rate_pairwise",
-     [sys.executable, "return_rate_pairwise.py"],
-     "Pairwise mera deleža vračanja (granularna)."),
+     [sys.executable, str(ROOT / "04_metrics" / "return_rate_pairwise.py")],
+     "Pairwise revisit-rate metric (granular)."),
 
     ("cosine_pairwise",
-     [sys.executable, "cosine_pairwise.py"],
-     "Pairwise globalna kosinusna razdalja."),
+     [sys.executable, str(ROOT / "04_metrics" / "cosine_pairwise.py")],
+     "Pairwise global cosine distance."),
 
     ("cosine_columns_pairwise",
-     [sys.executable, "cosine_rr.py"],
-     "Pairwise stolpčna kosinusna razdalja (po gručah)."),
+     [sys.executable, str(ROOT / "04_metrics" / "cosine_columns_pairwise.py")],
+     "Pairwise per-cluster-column cosine distance."),
 
     ("exploration_pairwise",
-     [sys.executable, "exploration_pairwise.py"],
-     "Pairwise mera razlike v raziskovanju/izkoriščanju."),
+     [sys.executable, str(ROOT / "04_metrics" / "exploration_pairwise.py")],
+     "Pairwise exploration/exploitation-difference metric."),
 
     ("solutions_pairwise",
-     [sys.executable, "solutions_pairwise.py"],
-     "Pairwise mera razlike v lokaciji in fitnessu."),
+     [sys.executable, str(ROOT / "04_metrics" / "solutions_pairwise.py")],
+     "Pairwise location- and fitness-difference metric."),
 
     ("merge",
-     [sys.executable, "merge_metrics.py"],
-     "Združitev vseh metrik v merged_dim_{d}.csv."),
+     [sys.executable, str(ROOT / "05_analysis" / "merge_metrics.py")],
+     "Merge all metrics into merged_dim_{d}.csv."),
 
     ("spearman",
-     [sys.executable, "spearman.py"],
-     "Spearmanova korelacijska analiza med metrikami."),
+     [sys.executable, str(ROOT / "05_analysis" / "spearman.py")],
+     "Spearman correlation analysis between metrics."),
 ]
 
 STEP_NAMES = [name for name, _, _ in STEPS]
@@ -95,13 +101,13 @@ STEP_NAMES = [name for name, _, _ in STEPS]
 
 def run_step(name, cmd, description, dry_run=False):
     print(f"\n{'='*70}")
-    print(f"KORAK: {name}")
+    print(f"STEP: {name}")
     print(f"  {description}")
-    print(f"  ukaz: {' '.join(cmd)}")
+    print(f"  command: {' '.join(cmd)}")
     print(f"{'='*70}")
 
     if dry_run:
-        print("  [dry-run] preskočeno")
+        print("  [dry-run] skipped")
         return True
 
     start = time.time()
@@ -109,22 +115,22 @@ def run_step(name, cmd, description, dry_run=False):
     elapsed = time.time() - start
 
     if result.returncode != 0:
-        print(f"\n!!! KORAK '{name}' JE SPODLETEL (izhodna koda {result.returncode}), "
-              f"po {elapsed:.1f}s. Ustavljam cevovod.")
+        print(f"\n!!! STEP '{name}' FAILED (exit code {result.returncode}), "
+              f"after {elapsed:.1f}s. Stopping the pipeline.")
         return False
 
-    print(f"\n  korak '{name}' uspešno zaključen v {elapsed:.1f}s")
+    print(f"\n  step '{name}' completed successfully in {elapsed:.1f}s")
     return True
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Zaporedni cevovod priprave podatkov in analize")
+    parser = argparse.ArgumentParser(description="Sequential data-preparation and analysis pipeline")
     parser.add_argument("--from", dest="from_step", choices=STEP_NAMES,
-                        help="Nadaljuj od tega koraka naprej (vključno)")
+                        help="Resume from this step onward (inclusive)")
     parser.add_argument("--only", dest="only_step", choices=STEP_NAMES,
-                        help="Poženi samo ta en korak")
+                        help="Run only this one step")
     parser.add_argument("--dry-run", action="store_true",
-                        help="Samo izpiši ukaze, brez dejanskega poganjanja")
+                        help="Only print commands, without actually running them")
     args = parser.parse_args()
 
     if args.only_step:
@@ -135,7 +141,7 @@ def main():
     else:
         steps_to_run = STEPS
 
-    print(f"Cevovod: {len(steps_to_run)} korakov -> {[s[0] for s in steps_to_run]}")
+    print(f"Pipeline: {len(steps_to_run)} steps -> {[s[0] for s in steps_to_run]}")
 
     pipeline_start = time.time()
     for name, cmd, description in steps_to_run:
@@ -145,7 +151,7 @@ def main():
 
     total = time.time() - pipeline_start
     print(f"\n{'='*70}")
-    print(f"CELOTEN CEVOVOD USPEŠNO ZAKLJUČEN v {total/60:.1f} min")
+    print(f"ENTIRE PIPELINE COMPLETED SUCCESSFULLY in {total/60:.1f} min")
     print(f"{'='*70}")
 
 

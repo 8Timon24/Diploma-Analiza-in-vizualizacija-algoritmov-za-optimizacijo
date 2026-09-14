@@ -1,32 +1,24 @@
+# Pipeline step "entropy_calc": computes normalized Shannon entropy of
+# cluster occupancy per algorithm/run/iteration from the cluster-distribution
+# CSVs, and writes both a granular and an aggregated table to data/entropy/.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import math
 import os
+from config import (
+    ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES,
+    CLUSTER_DISTRIBUTIONS_LATEST as INPUT_DIR, ENTROPY_DATA_DIR,
+)
 
-ALGORITHMS_OF_INTEREST = ["AugmentedAEO", "GWO_WOA",
-                           "HI_WOA", "IGWO",
-                           "ImprovedBSO", "JADE",
-                           "L_SHADE", "LevyTWO",
-                           "ModifiedAEO", "OriginalAEO",
-                           "OriginalALO", "OriginalCSA",
-                           "OriginalDE", "OriginalFPA",
-                           "OriginalGWO", "OriginalHC",
-                           "OriginalHHO", "OriginalMFO",
-                           "OriginalMPA", "OriginalMRFO",
-                           "OriginalNMRA", "OriginalSHADE",
-                           "OriginalSSA", "OriginalSSpiderA",
-                           "OriginalWOA", "RW_GWO",
-                           "SADE", "WhaleFOA"]
-
+# Smaller subset used ad hoc for some plots; kept separate from
+# ALGORITHMS_OF_INTEREST above (not the canonical filter list).
 ALGORITHMS_OF_INTEREST1 = ["HI_WOA",
                         "OriginalWOA", "WhaleFOA",
                         "GWO_WOA", "OriginalGWO",
                         "IGWO", "RW_GWO"]
-
-DIMENSIONS = [2, 5, 10]
-FUNCTIONS = [i for i in range(1, 25)]
-INSTANCES = [i for i in range(1, 6)]
-INPUT_DIR = 'data/clustering_latest/cluster_distributions'
-ENTROPY_DATA_DIR = 'data/entropy'  # where computed entropy CSVs get saved
 
 
 def compute_entropy(filepath, algorithms_of_interest=None):

@@ -1,28 +1,18 @@
+# Pipeline step "entropy_pairwise": for each (function, instance), computes
+# the mean absolute per-iteration entropy difference between every pair of
+# algorithms, per run. Writes metrics_data/entropy/dim_{d}/F{f}_I{i}.csv.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import numpy as np
 import pandas as pd
 import os
 from itertools import combinations
-
-ALGORITHMS_OF_INTEREST = ["AugmentedAEO", "GWO_WOA",
-                           "HI_WOA", "IGWO",
-                           "ImprovedBSO", "JADE",
-                           "L_SHADE", "LevyTWO",
-                           "ModifiedAEO", "OriginalAEO",
-                           "OriginalALO", "OriginalCSA",
-                           "OriginalDE", "OriginalFPA",
-                           "OriginalGWO", "OriginalHC",
-                           "OriginalHHO", "OriginalMFO",
-                           "OriginalMPA", "OriginalMRFO",
-                           "OriginalNMRA", "OriginalSHADE",
-                           "OriginalSSA", "OriginalSSpiderA",
-                           "OriginalWOA", "RW_GWO",
-                           "SADE", "WhaleFOA"]
-DIMENSIONS = [2, 5, 10]
-FUNCTIONS = [i for i in range(1, 25)]
-INSTANCES = [i for i in range(1, 6)]
-RUNS = [i for i in range(1,6)]
-INPUT_DIR = "data/entropy"
-OUTPUT_DIR = "metrics_data"
+from config import (
+    ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES, SEEDS as RUNS,
+    ENTROPY_DATA_DIR as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
+)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 algorithm_pairs = list(combinations(sorted(ALGORITHMS_OF_INTEREST), 2))
 

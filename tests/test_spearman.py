@@ -1,21 +1,18 @@
+# Ad hoc check: independently recomputes the Spearman correlation between
+# two metrics (cosine vs cosine_columns, dim 10) as a sanity cross-check of
+# spearman.py's merge logic.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import numpy as np
 import os
 from tqdm import tqdm
+from config import METRIC_KEYS as KEYS, normalize_keys, METRICS_DIR as metrics_dir
 
-metrics_dir = 'metrics_data'
-KEYS = ['Algorithm1', 'Algorithm2', 'Function_id', 'Instance_id', 'Run_id']
 DIM = 10  # test on one dimension
 METRICS_TO_TEST = ['cosine', 'cosine_columns']
-
-
-def normalize_keys(df):
-    for col, prefix in [('Function_id', 'F'), ('Instance_id', 'I')]:
-        if col in df.columns:
-            df[col] = df[col].astype(str).str.replace(prefix, '', regex=False).astype(int)
-    if 'Run_id' in df.columns:
-        df['Run_id'] = df['Run_id'].astype(int)
-    return df
 
 
 def load_metric(metric, dim):

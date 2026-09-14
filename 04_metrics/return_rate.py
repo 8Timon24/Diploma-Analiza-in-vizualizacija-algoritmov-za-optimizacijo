@@ -1,29 +1,19 @@
+# Pipeline step "return_rate_calc": detects cluster "revisit" events per
+# algorithm/run (an already-visited cluster becoming active again) and writes
+# the revisiting history + per-algorithm revisit counts to data/return_rate/.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 from tqdm import tqdm
 import itertools
 import os
 import numpy as np
-
-ALGORITHMS_OF_INTEREST = ["AugmentedAEO", "GWO_WOA",
-                           "HI_WOA", "IGWO",
-                           "ImprovedBSO", "JADE",
-                           "L_SHADE", "LevyTWO",
-                           "ModifiedAEO", "OriginalAEO",
-                           "OriginalALO", "OriginalCSA",
-                           "OriginalDE", "OriginalFPA",
-                           "OriginalGWO", "OriginalHC",
-                           "OriginalHHO", "OriginalMFO",
-                           "OriginalMPA", "OriginalMRFO",
-                           "OriginalNMRA", "OriginalSHADE",
-                           "OriginalSSA", "OriginalSSpiderA",
-                           "OriginalWOA", "RW_GWO",
-                           "SADE", "WhaleFOA"]
-
-DIMENSIONS = [2, 5, 10]
-FUNCTIONS = [i for i in range(1, 25)]
-INSTANCES = [i for i in range(1, 6)]
-INPUT_DIR = 'data/clustering_latest/cluster_distributions'
-RR_DATA_DIR = 'data/return_rate'
+from config import (
+    ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES,
+    CLUSTER_DISTRIBUTIONS_LATEST as INPUT_DIR, RETURN_RATE_DATA_DIR as RR_DATA_DIR,
+)
 
 
 def revisiting_history(d, threshold=3):

@@ -1,9 +1,13 @@
+# Pipeline step "harvest_results": scans outputs/ g_best trajectories and
+# builds outputs/dim_{d}/results.csv (one row per algorithm/problem/instance/
+# seed best solution).
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import os
-
-OUTPUTS_DIR = "outputs"
-DIMENSIONS = [2, 5, 10]
-SEEDS = [1, 2, 3, 4, 5]
+from config import OUTPUTS_DIR, DIMENSIONS, SEEDS
 
 
 def best_row_from_gbest(path):

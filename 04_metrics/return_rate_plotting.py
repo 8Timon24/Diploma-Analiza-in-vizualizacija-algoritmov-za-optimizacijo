@@ -1,3 +1,10 @@
+# Pipeline step "return_rate_plotting": renders the return-rate figures
+# (heatmaps, clustermap, dendrogram, MDS behavioral-distance plot) from the
+# matrices return_rate.py writes to data/return_rate/.
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -6,9 +13,8 @@ import os
 from sklearn.manifold import MDS
 from scipy.cluster.hierarchy import linkage, dendrogram
 from scipy.spatial.distance import squareform
-from return_rate_calculation import DIMENSIONS, RR_DATA_DIR
-
-FIGURES_OUTPUT_DIR = 'figures_revisiting'
+from return_rate import DIMENSIONS, RR_DATA_DIR
+from config import FIGURES_REVISITING_DIR as FIGURES_OUTPUT_DIR
 SPECIFIED_PROBLEM = "F17_I1"
 
 
@@ -181,7 +187,7 @@ if __name__ == "__main__":
     for d in DIMENSIONS:
         data_dir = f'{RR_DATA_DIR}/dim_{d}'
         if not os.path.isdir(data_dir):
-            print(f"Missing {data_dir} - run return_rate_calculation.py first.")
+            print(f"Missing {data_dir} - run return_rate.py first.")
             continue
 
         fig_dir = f'{FIGURES_OUTPUT_DIR}/dim_{d}'

@@ -13,9 +13,6 @@ from config import (
     ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES, SEEDS as RUNS,
     OUTPUTS_DIR as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
 )
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-algorithm_pairs = list(combinations(sorted(ALGORITHMS_OF_INTEREST), 2))
 
 
 def load_exploration(d, alg, f, i, seed):
@@ -32,35 +29,39 @@ def load_exploration(d, alg, f, i, seed):
     return df['exploration'].to_numpy()
 
 
-for d in DIMENSIONS:
-    os.makedirs(f'{OUTPUT_DIR}/exploration/dim_{d}', exist_ok=True)
+if __name__ == "__main__":
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    algorithm_pairs = list(combinations(sorted(ALGORITHMS_OF_INTEREST), 2))
 
-    for f in FUNCTIONS:
-        for i in INSTANCES:
-            rows = []  # (Alg1, Alg2, F, I) run_id, mean_exploration_difference
+    for d in DIMENSIONS:
+        os.makedirs(f'{OUTPUT_DIR}/exploration/dim_{d}', exist_ok=True)
 
-            for r in RUNS:
-                # cache each algorithm's exploration curve for this (f, i, r)
-                # so we don't re-read the same file for every pair it appears in
-                curves = {}
-                for alg in ALGORITHMS_OF_INTEREST:
-                    curves[alg] = load_exploration(d, alg, f, i, r)
+        for f in FUNCTIONS:
+            for i in INSTANCES:
+                rows = []  # (Alg1, Alg2, F, I) run_id, mean_exploration_difference
 
-                for pair in algorithm_pairs:
-                    alg1, alg2 = pair
-                    e1 = curves[alg1]
-                    e2 = curves[alg2]
-                    if e1 is None or e2 is None:
-                        continue  # missing diversity file for one algorithm
-                    if len(e1) != len(e2) or len(e1) == 0:
-                        continue
+                for r in RUNS:
+                    # cache each algorithm's exploration curve for this (f, i, r)
+                    # so we don't re-read the same file for every pair it appears in
+                    curves = {}
+                    for alg in ALGORITHMS_OF_INTEREST:
+                        curves[alg] = load_exploration(d, alg, f, i, r)
 
-                    diff = (np.abs(e1 - e2).mean())/100.0
+                    for pair in algorithm_pairs:
+                        alg1, alg2 = pair
+                        e1 = curves[alg1]
+                        e2 = curves[alg2]
+                        if e1 is None or e2 is None:
+                            continue  # missing diversity file for one algorithm
+                        if len(e1) != len(e2) or len(e1) == 0:
+                            continue
 
-                    row = {"Algorithm1": alg1, "Algorithm2": alg2,
-                           "Function_id": f, "Instance_id": i, "Run_id": r,
-                           "Mean_exploration_difference": diff}
-                    rows.append(row)
+                        diff = (np.abs(e1 - e2).mean())/100.0
 
-            result = pd.DataFrame(rows)
-            result.to_csv(f'{OUTPUT_DIR}/exploration/dim_{d}/F{f}_I{i}.csv', index=False)
+                        row = {"Algorithm1": alg1, "Algorithm2": alg2,
+                               "Function_id": f, "Instance_id": i, "Run_id": r,
+                               "Mean_exploration_difference": diff}
+                        rows.append(row)
+
+                result = pd.DataFrame(rows)
+                result.to_csv(f'{OUTPUT_DIR}/exploration/dim_{d}/F{f}_I{i}.csv', index=False)

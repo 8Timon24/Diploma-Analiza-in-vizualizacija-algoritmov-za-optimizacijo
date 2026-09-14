@@ -13,9 +13,6 @@ from config import (
     ALGORITHMS_OF_INTEREST, DIMENSIONS, SEEDS as RUNS,
     CLUSTER_DISTRIBUTIONS_LATEST as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
 )
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-algorithm_pairs = list(combinations(sorted(ALGORITHMS_OF_INTEREST), 2))
 
 
 def column_cosine_distance(tableA, tableB):
@@ -42,50 +39,54 @@ def column_cosine_distance(tableA, tableB):
     return 1.0 - mean_sim
 
 
-for d in DIMENSIONS:
-    os.makedirs(f'{OUTPUT_DIR}/cosine_columns/dim_{d}', exist_ok=True)
-    input_dir = f'{INPUT_DIR}/dim_{d}'
+if __name__ == "__main__":
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    algorithm_pairs = list(combinations(sorted(ALGORITHMS_OF_INTEREST), 2))
 
-    for file in sorted(os.listdir(input_dir)):
-        if not file.endswith('.csv'):
-            continue
-        problem_name = file.replace('.csv', '')   # "F1_I1"
-        prob = problem_name.split('_')[0]          # "F1"
-        inst = problem_name.split('_')[1]          # "I1"
+    for d in DIMENSIONS:
+        os.makedirs(f'{OUTPUT_DIR}/cosine_columns/dim_{d}', exist_ok=True)
+        input_dir = f'{INPUT_DIR}/dim_{d}'
 
-        # index levels: algorithm, run, iteration; columns: clusters
-        df = pd.read_csv(f'{input_dir}/{file}', index_col=[0, 1, 2])
+        for file in sorted(os.listdir(input_dir)):
+            if not file.endswith('.csv'):
+                continue
+            problem_name = file.replace('.csv', '')   # "F1_I1"
+            prob = problem_name.split('_')[0]          # "F1"
+            inst = problem_name.split('_')[1]          # "I1"
 
-        rows = []
-        for r in RUNS:
-            # extract each algorithm's table ONCE for this run, instead of
-            # re-doing the (slow) MultiIndex .loc lookup for every pair it
-            # appears in (~27x redundant otherwise).
-            tables = {}
-            for alg in ALGORITHMS_OF_INTEREST:
-                try:
-                    tables[alg] = df.loc[(alg, r)].sort_index().to_numpy()
-                except KeyError:
-                    tables[alg] = None
+            # index levels: algorithm, run, iteration; columns: clusters
+            df = pd.read_csv(f'{input_dir}/{file}', index_col=[0, 1, 2])
 
-            for pair in algorithm_pairs:
-                alg1, alg2 = pair
-                tableA = tables[alg1]
-                tableB = tables[alg2]
-                if tableA is None or tableB is None:
-                    continue
+            rows = []
+            for r in RUNS:
+                # extract each algorithm's table ONCE for this run, instead of
+                # re-doing the (slow) MultiIndex .loc lookup for every pair it
+                # appears in (~27x redundant otherwise).
+                tables = {}
+                for alg in ALGORITHMS_OF_INTEREST:
+                    try:
+                        tables[alg] = df.loc[(alg, r)].sort_index().to_numpy()
+                    except KeyError:
+                        tables[alg] = None
 
-                if tableA.shape != tableB.shape or tableA.size == 0:
-                    continue
+                for pair in algorithm_pairs:
+                    alg1, alg2 = pair
+                    tableA = tables[alg1]
+                    tableB = tables[alg2]
+                    if tableA is None or tableB is None:
+                        continue
 
-                distance = column_cosine_distance(tableA, tableB)
-                if distance is None:
-                    continue
+                    if tableA.shape != tableB.shape or tableA.size == 0:
+                        continue
 
-                row = {"Algorithm1": alg1, "Algorithm2": alg2,
-                       "Function_id": prob, "Instance_id": inst, "Run_id": r,
-                       "Cosine_column_distance": distance}
-                rows.append(row)
+                    distance = column_cosine_distance(tableA, tableB)
+                    if distance is None:
+                        continue
 
-        result = pd.DataFrame(rows)
-        result.to_csv(f'{OUTPUT_DIR}/cosine_columns/dim_{d}/{problem_name}.csv', index=False)
+                    row = {"Algorithm1": alg1, "Algorithm2": alg2,
+                           "Function_id": prob, "Instance_id": inst, "Run_id": r,
+                           "Cosine_column_distance": distance}
+                    rows.append(row)
+
+            result = pd.DataFrame(rows)
+            result.to_csv(f'{OUTPUT_DIR}/cosine_columns/dim_{d}/{problem_name}.csv', index=False)

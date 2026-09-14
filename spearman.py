@@ -14,8 +14,20 @@ MERGED_DIR = 'metrics_data/merged'
 
 # metrics to include (folder names under metrics_data/). Excludes 'merged'.
 # Edit this list to add/drop metrics.
-METRICS = ['entropy', 'return_rate', 'cosine', 'cosine_columns',
+METRICS = ['entropy', 'cosine', 'cosine_columns',
            'exploration', 'location', 'fitness']
+
+# Slovenian display labels - used only for figure axes, never for column names,
+# so merged_dim_*.csv / spearman_dim_*.csv stay compatible with the rest of the
+# pipeline. A metric missing from this dict falls back to its raw key.
+METRIC_LABELS_SL = {
+    'entropy': 'Entropija',
+    'cosine': 'Kosinusna razdalja',
+    'cosine_columns': 'Kosinusna razdalja po stolpcih',
+    'exploration': 'Raziskovanje',
+    'location': 'Lokacija',
+    'fitness': 'Kakovost',
+}
 
 
 def normalize_keys(df):
@@ -65,12 +77,15 @@ def build_merged(dim):
 
 
 def plot_spearman(corr, dim, present, output_dir):
+    # rename a copy for display only - `corr` itself is written to CSV unchanged
+    corr_sl = corr.rename(index=METRIC_LABELS_SL, columns=METRIC_LABELS_SL)
+
     plt.figure(figsize=(10, 8))
     # diverging colormap centered at 0 since correlations run -1..1
-    sns.heatmap(corr, annot=True, fmt='.2f', cmap='coolwarm', center=0,
+    sns.heatmap(corr_sl, annot=True, fmt='.2f', cmap='coolwarm', center=0,
                 vmin=-1, vmax=1, square=True, linewidths=0.5,
-                cbar_kws={'label': "Spearman's rho"})
-    plt.title(f'Spearman correlation between metrics (dim {dim})')
+                cbar_kws={'label': 'Spearmanov \u03c1'})
+    plt.title(f'Spearmanova korelacija med merami (dimenzija {dim})')
     plt.xticks(rotation=45, ha='right')
     plt.yticks(rotation=0)
     plt.tight_layout()

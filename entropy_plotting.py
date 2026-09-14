@@ -12,6 +12,18 @@ FUNCTION_GROUPS = {
     'multimodal_adequate': [15, 16, 17, 18, 19],
     'multimodal_weak': [20, 21, 22, 23, 24]
 }
+
+# prikazna imena skupin funkcij za grafe - iste besede kot v razdelku o BBOB;
+# FUNCTION_GROUPS sam ostane nedotaknjen, ker se njegovi kljuci uporabljajo
+# tudi za razvrscanje/logiko, ne le za prikaz
+GROUP_LABELS_SL = {
+    'separable': 'Ločljive',
+    'low_conditioning': 'Nizka pogojenost',
+    'high_conditioning': 'Visoka pogojenost',
+    'multimodal_adequate': 'Multimodalne (ustrezna struktura)',
+    'multimodal_weak': 'Multimodalne (šibka struktura)',
+}
+
 OUTPUT_DIR = 'figures_entropy'
 
 ALGO_PALETTE = dict(zip(
@@ -45,11 +57,12 @@ def plot_entropy(data, function, instance, dimension, output_dir=None, save=Fals
     sns.lineplot(data=data, x='iteration', y='entropy', hue='algorithm',
                  hue_order=algo_order, palette=palette, errorbar=None)
 
-    plt.title(f'Mean Normalized Population Entropy over Iterations in function F{function}_{instance}_D{dimension}')
-    plt.xlabel('Iteration')
-    plt.ylabel('Normalized Entropy')
+    plt.title(f'Povprečna normalizirana entropija populacije skozi iteracije '
+              f'na problemu F{function}_{instance}_D{dimension}')
+    plt.xlabel('Iteracija')
+    plt.ylabel('Normalizirana entropija')
     plt.ylim(0, 1)
-    plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=7)
+    plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=7, title='Algoritem')
     plt.tight_layout()
     if save and output_dir is not None:
         plt.savefig(f'{output_dir}/Entropy_F{function}_I{instance}_D{dimension}.pdf', bbox_inches='tight')
@@ -82,15 +95,20 @@ def plot_entropy_by_function_group(all_entropy, output_dir, function_groups, alg
     all_entropy['function_group'] = all_entropy['function_class'].map(function_to_group)
 
     group_entropy = (all_entropy.groupby(['algorithm', 'iteration', 'function_group'])['mean_entropy'].mean().reset_index())
+
+    # prikazni stolpec s slovenskimi imeni skupin - samo za graf, izvorni
+    # 'function_group' stolpec (angleski kljuci) ostane nedotaknjen
+    group_entropy['Skupina funkcij'] = group_entropy['function_group'].map(GROUP_LABELS_SL)
+
     algo_order = sorted(group_entropy['algorithm'].unique())
     palette = {a: ALGO_PALETTE[a] for a in algo_order}
 
-    g = sns.FacetGrid(group_entropy, col='function_group', col_wrap=3, height=4,
+    g = sns.FacetGrid(group_entropy, col='Skupina funkcij', col_wrap=3, height=4,
                        hue='algorithm', hue_order=algo_order, palette=palette)
     g.map_dataframe(sns.lineplot, x='iteration', y='mean_entropy')
     g.set(ylim=(0, 1))
-    g.set_axis_labels('Iteration', 'Normalized Entropy')
-    g.add_legend()
+    g.set_axis_labels('Iteracija', 'Normalizirana entropija')
+    g.add_legend(title='Algoritem')
     plt.tight_layout()
     plt.savefig(f'{output_dir}/entropy_across_function_groups.pdf', bbox_inches='tight')
     plt.close()
@@ -108,7 +126,7 @@ def plot_entropy_clustermap(all_entropy, output_dir, algorithms=None):
     g = sns.clustermap(algo_entropy_matrix, cmap='YlGnBu', figsize=(14, fig_height),
                         annot=False, standard_scale=None, col_cluster=False,
                         vmin=0, vmax=1)
-    
+
     # Labels must be pulled in the DENDROGRAM-REORDERED order (clustermap
     # rearranges rows), otherwise every row gets mislabeled with the wrong
     # algorithm name.
@@ -119,9 +137,9 @@ def plot_entropy_clustermap(all_entropy, output_dir, algorithms=None):
         fontsize=7, rotation=0
     )
 
-    g.ax_heatmap.set_xlabel('Iteration')
-    g.ax_heatmap.set_ylabel('Algorithm')
-    g.cax.set_ylabel('Normalized Entropy (H / ln k)')
+    g.ax_heatmap.set_xlabel('Iteracija')
+    g.ax_heatmap.set_ylabel('Algoritem')
+    g.cax.set_ylabel('Normalizirana entropija (H / ln k)')
     plt.savefig(f'{output_dir}/clustermap.pdf', bbox_inches='tight')
     plt.close()
 
@@ -136,12 +154,15 @@ def plot_entropy_overlay(all_entropy_by_dim, functions_of_interest, dims, output
     combined = pd.concat(rows, ignore_index=True)
     combined['function_class'] = combined['function_class'].astype(str)
 
-    g = sns.FacetGrid(combined, row='dim', col='algorithm', height=3, aspect=1.2,
+    # prikazni stolpec 'Dimenzija' za naslove facetov namesto surovega 'dim'
+    combined['Dimenzija'] = combined['dim']
+
+    g = sns.FacetGrid(combined, row='Dimenzija', col='algorithm', height=3, aspect=1.2,
                        hue='function_class', palette='tab10')
     g.map_dataframe(sns.lineplot, x='iteration', y='mean_entropy')
     g.set(ylim=(0, 1))
-    g.set_axis_labels('Iteration', 'Normalized Entropy')
-    g.add_legend()
+    g.set_axis_labels('Iteracija', 'Normalizirana entropija')
+    g.add_legend(title='Funkcija')
 
     if save:
         plt.savefig(f'{output_dir}/entropy_separability_overlay.pdf', bbox_inches='tight')

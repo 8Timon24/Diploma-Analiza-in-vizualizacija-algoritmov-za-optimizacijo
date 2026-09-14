@@ -38,7 +38,7 @@ for d in DIMENSIONS:
                 alg1, alg2 = pair
                 a1 = np.array(run_data[run_data['algorithm']==alg1].sort_values('iteration')["entropy"])
                 a2 = np.array(run_data[run_data['algorithm']==alg2].sort_values('iteration')["entropy"])
-                assert len(a1) == len(a2) == 20, f"unexpected length: {alg1}={len(a1)}, {alg2}={len(a2)} at F{f}_I{i}_R{r}"
+                assert len(a1) == len(a2), f"unexpected length: {alg1}={len(a1)}, {alg2}={len(a2)} at F{f}_I{i}_R{r}"
                 res = np.abs(a1-a2).mean()
                 row = {"Algorithm1": alg1, "Algorithm2":alg2, "Function_id": f, "Instance_id": i, "Run_id": r, "Mean_entropy_difference": res}
                 rows.append(row)

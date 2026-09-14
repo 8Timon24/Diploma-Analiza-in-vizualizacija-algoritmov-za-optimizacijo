@@ -9,6 +9,8 @@ for d in dimensions:
     base_d = f'{base}/dim_{d}'
     
     for algorithm in os.listdir(base_d):
+        if not os.path.isdir(f'{base_d}/{algorithm}'):
+                continue 
         print(f'Preprocessing algorithm {algorithm} in dimension {d}')
         for problem_folder in os.listdir(f'{base_d}/{algorithm}'):
             problem_id, instance_id = problem_folder.split('_')

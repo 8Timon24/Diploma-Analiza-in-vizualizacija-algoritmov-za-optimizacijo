@@ -13,7 +13,7 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-`requirements.txt` is gitignored (kept local, not committed) — if missing, recreate it with `pip freeze`. Key dependencies: `mealpy` (optimizer implementations), `cocoex`/`coco-experiment` (BBOB suite — this is a compiled C extension and is the dependency most likely to need special install steps), `scikit-learn`, `pandas`, `yellowbrick`/`kneed` (elbow-method cluster count selection), `dtw-python`, `pymoo`, `opfunu`.
+`requirements.txt` is a full `pip freeze` of the venv, committed to the repo. Key dependencies: `mealpy` (optimizer implementations), `cocoex`/`coco-experiment` (BBOB suite — this is a compiled C extension and is the dependency most likely to need special install steps), `scikit-learn`, `pandas`, `pytest`, `yellowbrick`/`kneed` (elbow-method cluster count selection), `dtw-python`, `pymoo`, `opfunu`. Regenerate it with `pip freeze > requirements.txt` after installing something new.
 
 No directories need to be created by hand. `data/`, `outputs/`, `metrics_data/`, and every `figures_*/` folder are gitignored and don't exist on a fresh clone — every pipeline script creates whatever output directories it needs on first write. All of these paths are defined once in `config.py` as **absolute** paths anchored to the repo root (`REPO_ROOT = Path(__file__).resolve().parent`), so a step still writes to the real top-level folders no matter which directory you're in when you run it (e.g. `python 04_metrics/cosine_pairwise.py` from the repo root, or `cd 04_metrics && python cosine_pairwise.py` from inside the folder — both land in the same `metrics_data/`).
 
@@ -76,7 +76,7 @@ Single source of truth for the algorithm list (`ALGORITHMS_OF_INTEREST`, 28 name
 
 ## Testing
 
-`pytest` is installed in the venv but not yet in `requirements.txt` (gitignored; `pip install pytest` if missing).
+`pytest` is in `requirements.txt`.
 
 ```bash
 # fast unit tests for the pure metric functions (normalize_keys, column_cosine_distance,

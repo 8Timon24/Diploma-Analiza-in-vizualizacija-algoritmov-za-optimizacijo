@@ -1,7 +1,6 @@
 *.png
 *.pdf
 venv
-requirements.txt
 *.dat
 *.info
 *.mdat

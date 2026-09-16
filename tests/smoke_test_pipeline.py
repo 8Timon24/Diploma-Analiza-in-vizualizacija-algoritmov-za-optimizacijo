@@ -150,6 +150,20 @@ def test_full_pipeline_end_to_end(tmp_path):
         # every metric must actually appear as a column after the merge.
         assert merged_col in merged.columns, f"merged table missing metric column '{merged_col}'"
 
+    # ---- build_scalars: the per-ALGORITHM table (not pairwise) ----
+    scalars_csv = tmp_path / "metrics_data" / "scalars.csv"
+    assert scalars_csv.is_file(), "build_scalars.py did not write scalars.csv"
+    scalars = pd.read_csv(scalars_csv)
+    assert {"dim", "func", "algo"}.issubset(scalars.columns)
+    for scalar in ("entropy", "fitness", "exploration", "diversity"):
+        assert scalar in scalars.columns, f"scalars.csv missing '{scalar}'"
+    # one row per (dim, func, algo) - this is what scalar_regression.py needs,
+    # and is a different shape from the pairwise tables above
+    assert set(scalars["algo"]) == set(TEST_ALGORITHMS)
+    assert set(scalars["func"]) == set(TEST_FUNCTIONS)
+    assert len(scalars) == len(TEST_ALGORITHMS) * len(TEST_FUNCTIONS) * len(TEST_DIMENSIONS)
+    assert not scalars[["entropy", "fitness", "exploration", "diversity"]].isna().any().any()
+
     # ---- spearman: correlation matrix + figure produced from real data ----
     spearman_csv = tmp_path / "metrics_data" / "merged" / f"spearman_dim_{d}.csv"
     assert spearman_csv.is_file()

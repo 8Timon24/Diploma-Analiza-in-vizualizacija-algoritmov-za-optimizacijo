@@ -28,8 +28,8 @@ Pipeline scripts live in numbered stage folders that mirror the run order end to
 04_metrics/     entropy.py, entropy_pairwise.py, entropy_plotting.py,
                 cosine_pairwise.py, cosine_columns_pairwise.py,
                 exploration_pairwise.py, solutions_pairwise.py
-05_analysis/    merge_metrics.py, spearman.py, scalar_regression.py,
-                and all the exploratory *.ipynb notebooks
+05_analysis/    merge_metrics.py, spearman.py, build_scalars.py,
+                scalar_regression.py, and all the exploratory *.ipynb notebooks
 scratch/        one-off diagnostic/debug + exploratory check scripts (preveri_*.py,
                 poisci_pare_clustopt.py, slika_dodana_vrednost.py, check_*.py,
                 testing.py) — not part of the pipeline, no assertions
@@ -63,9 +63,10 @@ Step order and what each stage produces (see `STEPS` in `run_pipeline.py` for th
 8. **exploration_pairwise** (`04_metrics/exploration_pairwise.py`) — pairwise difference in exploration/exploitation balance.
 9. **solutions_pairwise** (`04_metrics/solutions_pairwise.py`) — pairwise difference in final solution location/fitness.
 10. **merge** (`05_analysis/merge_metrics.py`) — outer-joins **every** metric found under `metrics_data/*/dim_{d}/` on the shared keys into `metrics_data/merged/merged_dim_{d}.csv`. This is the canonical "all metrics" table.
-11. **spearman** (`05_analysis/spearman.py`) — inner-joins only the metrics in its own `METRICS` list, computes the Spearman correlation matrix between them per dimension, and saves the matrix to `metrics_data/merged/spearman_dim_{d}.csv` and a heatmap to `figures_spearman/`. Its own working table is `metrics_data/merged/spearman_input_dim_{d}.csv` — a **different file** from step 10's `merged_dim_{d}.csv`, on purpose: both scripts used to write to the same `merged_dim_{d}.csv`, and since "spearman" always runs right after "merge", it silently clobbered merge_metrics.py's more complete output with its own narrower one on every real run. Don't reintroduce that collision if editing either script's output path.
+11. **build_scalars** (`05_analysis/build_scalars.py`) — builds `metrics_data/scalars.csv`: one row per (dim, func, algo) with per-**algorithm** scalars (entropy, fitness, exploration, diversity), derived from `data/entropy/entropy_granular_dim_{d}.csv`, `outputs/dim_{d}/results.csv` and the per-run `diversity_{seed}.csv` files. This is a *different shape* from everything else in `metrics_data/`, which is pairwise (one row per algorithm **pair**) — and it exists because `scalar_regression.py` needs per-algorithm scalars and previously had no input in the repo that matched.
+12. **spearman** (`05_analysis/spearman.py`) — inner-joins only the metrics in its own `METRICS` list, computes the Spearman correlation matrix between them per dimension, and saves the matrix to `metrics_data/merged/spearman_dim_{d}.csv` and a heatmap to `figures_spearman/`. Its own working table is `metrics_data/merged/spearman_input_dim_{d}.csv` — a **different file** from step 10's `merged_dim_{d}.csv`, on purpose: both scripts used to write to the same `merged_dim_{d}.csv`, and since "spearman" always runs right after "merge", it silently clobbered merge_metrics.py's more complete output with its own narrower one on every real run. Don't reintroduce that collision if editing either script's output path.
 
-A `04_metrics/entropy_plotting.py` plotting script isn't a `run_pipeline.py` step — run it manually after `entropy_calc` to render figures.
+Two figure-producing scripts aren't `run_pipeline.py` steps — run them manually after the step they depend on: `04_metrics/entropy_plotting.py` (after `entropy_calc`) and `05_analysis/scalar_regression.py` (after `build_scalars`, defaults to reading `metrics_data/scalars.csv` and writing `figures_results/scalar_regression.png`).
 
 Note: a "return rate" / "shared revisit rate" metric (detecting when an algorithm revisits an already-explored cluster) used to be part of this pipeline (`return_rate.py`, `return_rate_pairwise.py`, `return_rate_plotting.py`, a `data/return_rate/` stage, and a `return_rate` column in `merged_dim_{d}.csv`). It was removed as unneeded — if you see stray references to it in old notes/branches, they're stale.
 

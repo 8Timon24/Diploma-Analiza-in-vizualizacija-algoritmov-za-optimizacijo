@@ -43,7 +43,7 @@ creates what it needs on first write.
 
 ## Running the pipeline
 
-`run_pipeline.py` runs all 13 steps in order, each as a separate subprocess, stopping at
+`run_pipeline.py` runs all 14 steps in order, each as a separate subprocess, stopping at
 the first failure so nothing runs on broken data:
 
 ```bash
@@ -95,6 +95,31 @@ figures_*/      generated plots
 
 `metrics_data/merged/merged_dim_{d}.csv` is the main artifact: every metric joined on
 (Algorithm1, Algorithm2, Function_id, Instance_id, Run_id).
+
+`metrics_data/scalars.csv` is the companion per-**algorithm** table (one row per dim/func/algo,
+with entropy, fitness, exploration and diversity), used for the regression analysis below.
+
+## Regression over per-algorithm scalars
+
+The pairwise metrics above answer "how differently do A and B search?". To ask a question
+about the algorithms themselves — *do higher-entropy searchers actually explore more?* — you
+need per-algorithm scalars rather than pairwise differences, which is what
+`metrics_data/scalars.csv` provides:
+
+```bash
+python 05_analysis/build_scalars.py                      # build the scalar table
+python 05_analysis/scalar_regression.py                  # entropy vs exploration (default)
+python 05_analysis/scalar_regression.py --x entropy --y fitness --dims 2 10
+```
+
+It fits one OLS panel per dimension, colours the 28 algorithms by family, draws error bars
+for the spread across BBOB functions, and rings high-influence points (Cook's distance) so a
+line propped up by one or two outliers is visible rather than hidden. Output goes to
+`figures_results/scalar_regression.png`.
+
+Note it deliberately regresses the *scalars*, not averaged pairwise distances: for a
+difference-type metric, averaging over partners is V-shaped in the underlying scalar, so it
+measures atypicality rather than magnitude (see the module docstring).
 
 ## Tests
 

@@ -26,26 +26,38 @@ coupled, so slope / R^2 / p-value are interpretable at face value.
 
 Expected input
 --------------
-A tidy CSV with one row per (dim, func, algo) and one column per scalar:
+A tidy CSV with one row per (dim, func, algo) and one column per scalar, which
+is exactly what `05_analysis/build_scalars.py` writes to
+`metrics_data/scalars.csv` (the default for `--scalars`):
 
-    dim,func,algo,entropy,exploration,fitness
-    2,f1,JADE,3.71,0.63,0.006
-    2,f1,L-SHADE,3.55,0.58,0.011
+    dim,func,algo,entropy,fitness,exploration,diversity
+    2,1,JADE,0.71,0.006,0.63,1.42
+    2,1,L_SHADE,0.55,0.011,0.58,1.31
     ...
 
+Note this is a different shape from the rest of the pipeline's output, which is
+PAIRWISE (one row per algorithm *pair*: Algorithm1, Algorithm2, ...). Run
+`python 05_analysis/build_scalars.py` first; `metrics_data/merged/merged_dim_*.csv`
+is not a valid input here.
+
 `load_scalars` also accepts the long form (dim, func, algo, metric, value) and
-pivots it. Point `--scalars` at whatever your merge/normalisation step emits.
+pivots it.
 """
 
 from __future__ import annotations
 
-import argparse
+import sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import argparse
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy import stats
+
+from config import SCALARS_CSV, FIGURES_RESULTS_DIR
 
 # --------------------------------------------------------------------------
 # Algorithm families -- used for point colour and for spotting the case where
@@ -265,15 +277,25 @@ def facet_by_dim(
 # --------------------------------------------------------------------------
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--scalars", required=True, help="per-(dim, func, algo) scalar CSV")
+    ap.add_argument("--scalars", default=SCALARS_CSV,
+                    help="per-(dim, func, algo) scalar CSV (default: what build_scalars.py writes)")
     ap.add_argument("--x", default="entropy")
     ap.add_argument("--y", default="exploration")
     ap.add_argument("--dims", type=int, nargs="*", default=None)
     ap.add_argument("--normalise-per-function", action="store_true")
     ap.add_argument("--no-errorbars", action="store_true")
     ap.add_argument("--no-annotate", action="store_true")
-    ap.add_argument("--out", default="scalar_regression.png")
+    ap.add_argument("--out", default=f"{FIGURES_RESULTS_DIR}/scalar_regression.png")
     args = ap.parse_args()
+
+    if not Path(args.scalars).is_file():
+        raise SystemExit(
+            f"no scalar table at {args.scalars}\n"
+            f"run `python 05_analysis/build_scalars.py` first "
+            f"(the pairwise merged_dim_*.csv files are a different shape and won't work here)"
+        )
+
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
 
     df = load_scalars(args.scalars)
     agg = aggregate_over_functions(

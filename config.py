@@ -78,6 +78,9 @@ ENTROPY_DATA_DIR = f"{DATA_DIR}/entropy"
 
 METRICS_DIR = str(REPO_ROOT / "metrics_data")               # per-metric pairwise CSVs
 MERGED_DIR = f"{METRICS_DIR}/merged"
+# Per-ALGORITHM scalars (one row per dim/func/algo), as opposed to the pairwise
+# tables above. Written by 05_analysis/build_scalars.py, read by scalar_regression.py.
+SCALARS_CSV = f"{METRICS_DIR}/scalars.csv"
 CLUSTER_DISTRIBUTIONS_SUBDIR = "cluster_distributions"
 SIMILARITY_OUTPUT_SUBDIR = "algorithm_pairwise_similarity"
 

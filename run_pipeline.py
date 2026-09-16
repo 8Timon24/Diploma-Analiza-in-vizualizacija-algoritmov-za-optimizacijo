@@ -83,6 +83,11 @@ STEPS = [
      [sys.executable, str(ROOT / "05_analysis" / "merge_metrics.py")],
      "Merge all metrics into merged_dim_{d}.csv."),
 
+    ("build_scalars",
+     [sys.executable, str(ROOT / "05_analysis" / "build_scalars.py")],
+     "Build the per-algorithm scalar table (metrics_data/scalars.csv) that "
+     "scalar_regression.py consumes - the other outputs are all pairwise."),
+
     ("spearman",
      [sys.executable, str(ROOT / "05_analysis" / "spearman.py")],
      "Spearman correlation analysis between metrics."),

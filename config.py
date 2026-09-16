@@ -60,6 +60,13 @@ FUNCTIONS = _list_override("PIPELINE_TEST_FUNCTIONS", list(range(1, 25)))
 INSTANCES = _list_override("PIPELINE_TEST_INSTANCES", list(range(1, 6)))
 SEEDS = _list_override("PIPELINE_TEST_SEEDS", [1, 2, 3, 4, 5])
 
+# Seed for the clustering step. sklearn's KMeans picks its initial centroids
+# randomly, so without this the pipeline is not reproducible: re-running it can
+# choose a different k AND assign different cluster labels, which shifts every
+# metric computed downstream from cluster occupancy (entropy, cosine,
+# cosine_columns). Changing this value changes clustering results.
+CLUSTERING_SEED = 42
+
 # --- Directory layout (all ABSOLUTE, anchored to REPO_ROOT - see module docstring) ---
 OUTPUTS_DIR = str(REPO_ROOT / "outputs")                    # raw per-run benchmark trajectories
 DATA_DIR = str(REPO_ROOT / "data")
@@ -92,6 +99,28 @@ METRIC_LABELS = {
     "location": "Location",
     "fitness": "Quality",
 }
+
+
+CLUSTERING_METHODS = ["kmeans", "dbscan", "dbscan_adaptive"]
+
+
+def clustering_dir(method):
+    """Map a clustering method (the -c flag) to its data directory.
+
+    Both 03_cluster/cluster_trajectories.py (which writes) and
+    cluster_similarity.py (which reads) go through this, so the two can't
+    disagree about where a given method's data lives. They used to: the
+    writer sent 'dbscan_adaptive' to <dbscan>/adaptive/ while the reader's
+    else-branch sent it to <dbscan>/, so that mode silently analysed the
+    wrong directory.
+    """
+    if method == "kmeans":
+        return f"{CLUSTERING_LATEST_DIR}/"
+    if method == "dbscan":
+        return f"{CLUSTERING_DBSCAN_DIR}/"
+    if method == "dbscan_adaptive":
+        return f"{CLUSTERING_DBSCAN_DIR}/adaptive/"
+    raise ValueError(f"unknown clustering method {method!r}; expected one of {CLUSTERING_METHODS}")
 
 
 def normalize_keys(df):

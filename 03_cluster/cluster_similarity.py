@@ -17,19 +17,20 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from utils import *
 import argparse
-from config import DIMENSIONS, CLUSTERING_LATEST_DIR, CLUSTERING_DBSCAN_DIR
+from config import DIMENSIONS, CLUSTERING_METHODS, clustering_dir
 
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 parser = argparse.ArgumentParser(prog='Clustering on meta-heuristic algorithm\'s trajectories', usage='%(prog)s [options]')
-parser.add_argument('-c', choices=['kmeans', 'dbscan'], help="Choose the clustering method")
+parser.add_argument('-c', choices=CLUSTERING_METHODS, default='kmeans',
+                    help="Choose the clustering method (default: kmeans)")
 args = parser.parse_args()
-if args.c == 'kmeans':
-    CLUSTER_FEATURES_DIR = f'{CLUSTERING_LATEST_DIR}/'
-else:
-    CLUSTER_FEATURES_DIR = f'{CLUSTERING_DBSCAN_DIR}/'
+
+# Must match what cluster_trajectories.py wrote for the same method - hence the
+# shared config.clustering_dir() rather than a second copy of the mapping.
+CLUSTER_FEATURES_DIR = clustering_dir(args.c)
 
 # Sub-directory pattern for cluster distributions per dimension
 CLUSTER_DISTRIBUTIONS_SUBDIR = 'cluster_distributions'

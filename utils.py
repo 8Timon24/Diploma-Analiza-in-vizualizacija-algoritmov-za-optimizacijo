@@ -13,18 +13,6 @@ import matplotlib.pyplot as plt
 import mealpy
 import itertools
 
-ALGORITHMS_OF_INTEREST = ["JADE", "OriginalDE",
-                        "SADE", "OriginalSHADE",
-                        "ModifiedAEO","OriginalAEO", 
-                        "AugmentedAEO","HI_WOA", 
-                        "OriginalWOA", "OriginalALO", 
-                        "OriginalSSA", "OriginalMFO", 
-                        "OriginalHHO", "OriginalMPA", 
-                        "OriginalMRFO", "WhaleFOA", 
-                        "GWO_WOA", "OriginalGWO", 
-                        "IGWO", "RW_GWO"]
-
-INPUT_DIR = 'data/clustering_features_20_algorithms_kmeans/cluster_distributions'
 
 def get_algorithm_groups():
     optimizers=mealpy.get_all_optimizers(verbose=False)

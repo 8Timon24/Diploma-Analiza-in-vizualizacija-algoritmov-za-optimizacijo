@@ -13,14 +13,6 @@ from config import (
     CLUSTER_DISTRIBUTIONS_LATEST as INPUT_DIR, ENTROPY_DATA_DIR,
 )
 
-# Smaller subset used ad hoc for some plots; kept separate from
-# ALGORITHMS_OF_INTEREST above (not the canonical filter list).
-ALGORITHMS_OF_INTEREST1 = ["HI_WOA",
-                        "OriginalWOA", "WhaleFOA",
-                        "GWO_WOA", "OriginalGWO",
-                        "IGWO", "RW_GWO"]
-
-
 def compute_entropy(filepath, algorithms_of_interest=None):
     """
     Computes normalized Shannon entropy (H / ln k, in [0, 1]) of cluster

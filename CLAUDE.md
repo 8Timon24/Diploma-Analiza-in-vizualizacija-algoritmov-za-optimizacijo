@@ -30,14 +30,15 @@ Pipeline scripts live in numbered stage folders that mirror the run order end to
                 exploration_pairwise.py, solutions_pairwise.py
 05_analysis/    merge_metrics.py, spearman.py, scalar_regression.py,
                 and all the exploratory *.ipynb notebooks
-scratch/        one-off diagnostic/debug scripts (preveri_*.py, poisci_pare_clustopt.py,
-                slika_dodana_vrednost.py, testing.py) — not part of the pipeline
+scratch/        one-off diagnostic/debug + exploratory check scripts (preveri_*.py,
+                poisci_pare_clustopt.py, slika_dodana_vrednost.py, check_*.py,
+                testing.py) — not part of the pipeline, no assertions
 tests/          pytest unit tests (test_*.py) + smoke_test_pipeline.py (see Testing below)
 ```
 
-`config.py`, `utils.py`, `helper_functions.py`, and `run_pipeline.py` stay at the repo root since they're shared across every stage. Every moved script starts with a small `sys.path.insert(0, ...)` shim pointing at the repo root so `from config import ...` (and similar) resolves regardless of how the script is invoked — this is deliberate, not leftover cruft.
+`config.py`, `utils.py`, `helper_functions.py`, and `run_pipeline.py` stay at the repo root since they're shared across every stage. Every script outside the root starts with a small `sys.path.insert(0, ...)` shim pointing at the repo root so `from config import ...` (and similar) resolves regardless of how the script is invoked — this is deliberate, not leftover cruft.
 
-`Old/` and `trash/` hold pre-refactor/deprecated versions of scripts — treat them as reference only, not live code.
+**Notebooks** in `05_analysis/` each open with a "repo-root bootstrap" cell that `os.chdir`s up to the repo root and puts the root + `04_metrics/` on `sys.path`. Jupyter's working directory is the notebook's own folder, so without it every `data/...`-style path inside the notebooks would resolve under `05_analysis/`. Keep that cell first, and run it before the rest of the notebook.
 
 ## The pipeline
 
@@ -73,6 +74,11 @@ All per-metric pairwise CSVs under `metrics_data/<metric>/dim_{d}/F{f}_I{i}.csv`
 ## config.py
 
 Single source of truth for the algorithm list (`ALGORITHMS_OF_INTEREST`, 28 names), the benchmark sweep (`DIMENSIONS`, `FUNCTIONS`, `INSTANCES`, `SEEDS`), every data/output/figures directory, the pairwise-metric CSV schema (`METRIC_KEYS`, `normalize_keys()`), and English `METRIC_LABELS` for figures. Every pipeline/metrics/analysis script imports the values it needs from here (often aliased on import to match the script's existing local variable name, e.g. `from config import CLUSTER_DISTRIBUTIONS_LATEST as INPUT_DIR`) instead of redeclaring them. When adding or removing an algorithm from the analysis, change it in `config.py` only.
+
+Two things there are easy to miss:
+- **`CLUSTERING_SEED`** is passed as `random_state` to both `KMeans(...)` calls in `03_cluster/cluster_trajectories.py`. sklearn's KMeans initializes centroids randomly, so without it a re-run could pick a different k *and* different cluster labels, which moves every metric computed downstream from cluster occupancy. Changing this value changes clustering results — measured on real dim-2 data, two different seeds disagree on ~53% of cluster labels.
+  **Caveat:** the results currently stored in `data/clustering_latest/` (and everything derived from them in `metrics_data/` and `figures_*/`) were produced *before* the seed was added, i.e. unseeded. Re-running the pipeline today will therefore **not** reproduce those exact numbers. This was a deliberate choice — the existing results were kept as-is rather than regenerated. Reproducibility applies to runs from this point on.
+- **`clustering_dir(method)`** maps the `-c` flag (`kmeans` / `dbscan` / `dbscan_adaptive`) to its data directory, and is used by *both* `cluster_trajectories.py` (writes) and `cluster_similarity.py` (reads). They previously each had their own copy of that mapping and disagreed about `dbscan_adaptive`, so that mode silently read a different directory than the one it wrote. Don't reintroduce a second copy.
 
 ## Testing
 

@@ -24,20 +24,19 @@ import math
 import argparse
 from kneed import KneeLocator
 import itertools
-from config import ALGORITHMS_OF_INTEREST, DIMENSIONS, CLUSTERING_LATEST_DIR, CLUSTERING_DBSCAN_DIR, PROCESSED_DIR
+from config import (
+    ALGORITHMS_OF_INTEREST, DIMENSIONS, PROCESSED_DIR, CLUSTERING_SEED,
+    CLUSTERING_METHODS, clustering_dir,
+)
 
 ALL_REMOVED_ALGORITHMS = get_removed_algorithms()
 # Arguments to distinguish the type of clustering we want to do
 parser = argparse.ArgumentParser(prog='Clustering on meta-heuristic algorithm\'s trajectories', usage='%(prog)s [options]')
-parser.add_argument('-c', choices=['kmeans', 'dbscan', 'dbscan_adaptive'], help="Choose the clustering method")
+parser.add_argument('-c', choices=CLUSTERING_METHODS, default='kmeans',
+                    help="Choose the clustering method (default: kmeans)")
 args = parser.parse_args()
 
-if args.c == 'kmeans':
-    DATA_DIR = f'{CLUSTERING_LATEST_DIR}/'
-elif args.c == 'dbscan':
-    DATA_DIR = f'{CLUSTERING_DBSCAN_DIR}/'
-elif args.c == 'dbscan_adaptive':
-    DATA_DIR = f'{CLUSTERING_DBSCAN_DIR}/adaptive/'
+DATA_DIR = clustering_dir(args.c)
 
 def determine_number_of_clusters(X):
     """
@@ -57,7 +56,9 @@ def determine_number_of_clusters(X):
         The elbow value (optimal k) detected by KElbowVisualizer,
         or None if no clear elbow is found.
     """
-    model = KMeans()
+    # random_state/n_init pinned so the elbow picks the same k on a re-run -
+    # an unseeded KMeans here makes the chosen k itself nondeterministic.
+    model = KMeans(random_state=CLUSTERING_SEED, n_init="auto")
 
     # Candidate k values: [4, 8, 16, 32, 64, 128, 256, 512]
     cluster_options = [int(math.pow(2, x)) for x in range(2, 10)]
@@ -88,7 +89,7 @@ def fit_kmeans(X):
     """
     number_of_clusters = determine_number_of_clusters(X)
 
-    model = KMeans(number_of_clusters)
+    model = KMeans(number_of_clusters, random_state=CLUSTERING_SEED, n_init="auto")
     model.fit(X)
     clusters = model.predict(X)
 
@@ -122,7 +123,7 @@ def load_and_filter_data(filepath, dimension, all_removed_algorithms, algorithms
     Load a compressed CSV for one problem file and apply all row-level filters.
 
     Filters applied (in order):
-      1. Keep only rows where evaluations <= 500 * dimension  (budget cap).
+      1. Keep only rows where evaluations <= 1100 * dimension  (budget cap).
       2. Drop algorithms that are in the global removal list.
       3. Keep only algorithms that are in the interest list.
       4. Drop rows from iteration 0 (initialisation / pre-search rows).

@@ -1,0 +1,43 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # The fast unit suite deliberately depends on nothing heavy: it tests
+      # pure functions against synthetic fixtures. Installing the full
+      # requirements.txt here would pull in cocoex (a compiled C extension),
+      # mealpy, pymoo, yellowbrick and friends - slow and fragile, for no
+      # benefit, since none of them is reachable from tests/test_*.py.
+      # Verified in a clean venv: pandas + numpy + pytest is sufficient.
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy pytest
+
+      # py_compile neither imports nor executes, so it needs no dependencies.
+      # This catches syntax errors in the pipeline scripts that the unit tests
+      # never import (the clustering/benchmark/plotting steps).
+      - name: Byte-compile every pipeline script
+        run: |
+          find . -maxdepth 2 -name "*.py" ! -path "./venv/*" -print0 \
+            | xargs -0 -n1 python -m py_compile
+
+      # Note: tests/smoke_test_pipeline.py is intentionally NOT named test_*.py,
+      # so pytest's discovery skips it here. It runs the real pipeline end to
+      # end (mealpy + cocoex + KMeans) and is meant to be run locally, not in
+      # CI. Don't "fix" its filename.
+      - name: Run fast unit tests
+        run: python -m pytest tests/ -v

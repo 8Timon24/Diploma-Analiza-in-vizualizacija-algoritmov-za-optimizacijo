@@ -6,6 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A diploma thesis codebase ("Analiza in vizualizacija algoritmov za optimizacijo prek iskalnih trajektorij" — analysis and visualization of optimization algorithms via search trajectories). It benchmarks 28 metaheuristic optimizers (from `mealpy`) on the BBOB benchmark suite (via `cocoex`/COCO), then clusters their search trajectories and computes several pairwise similarity/difference metrics between algorithms to see which metrics carry redundant vs. complementary information (via Spearman correlation). Code, comments, and output are English throughout; only the thesis-facing prose (docstrings quoting formulas) still references "the thesis."
 
+## Before you run anything
+
+Two things will bite you otherwise:
+
+- **The benchmark step is an hours-long job.** `python run_pipeline.py` with no arguments starts step 1, which runs 28 optimizers × 24 functions × 5 instances × 3 dimensions × 5 seeds. Never kick it off casually or suggest the user do so without saying what it costs. In practice the benchmark is run once and later steps are re-run with `--from <step>`.
+- **Pipeline steps overwrite the user's real results.** `data/`, `outputs/` and `metrics_data/` hold months of computed output that is *not* in git (all gitignored). Running a metrics step "just to see if it works" recomputes and rewrites real files. To exercise the pipeline safely, use the smoke test or set the `PIPELINE_TEST_*` env vars to redirect everything into a temp directory (see `config.py`'s docstring and `tests/smoke_test_pipeline.py`). Prefer `--dry-run` when you only need to check wiring.
+
+Every pipeline script is import-safe: they all guard their work behind `if __name__ == "__main__":`, so importing one to test a function does not execute the pipeline. Keep it that way — several used to lack the guard, and importing one for a unit test kicked off its whole real computation.
+
 ## Setup
 
 ```bash
@@ -83,26 +92,29 @@ Two things there are easy to miss:
 
 ## Testing
 
-`pytest` is in `requirements.txt`.
+`pytest` is in `requirements.txt`. Run both before committing anything that touches the pipeline.
 
 ```bash
-# fast unit tests for the pure metric functions (normalize_keys, column_cosine_distance,
-# compute_entropy/aggregate_from_granular) - synthetic fixtures, no real data or cocoex
-# dependency, ~2s total:
+# Fast unit tests for the pure metric functions (normalize_keys,
+# column_cosine_distance, compute_entropy/aggregate_from_granular). Synthetic
+# fixtures only - no real data, no cocoex/sklearn/mealpy. Sub-second.
 python -m pytest tests/
 
-# some pipeline scripts execute their real computation unconditionally at import time
-# (no `if __name__ == "__main__":` guard) - never import a name from one of these for a
-# test without first checking it has the guard, or the import itself runs the real thing.
-
-# end-to-end smoke test: runs the ENTIRE real pipeline (all run_pipeline.py steps,
-# real mealpy/cocoex optimization + real KMeans clustering) against a tiny synthetic
-# 2-algorithm/2-function sweep, isolated to a temp dir via config.py's PIPELINE_TEST_*
-# env vars (see config.py's docstring) - never touches the real data/outputs/metrics_data.
-# Deliberately NOT named test_*.py so `pytest tests/` above doesn't pick it up - run it
-# explicitly (takes ~15s, not part of the fast suite):
+# End-to-end smoke test: runs EVERY run_pipeline.py step for real (real
+# mealpy/cocoex optimization + real KMeans) on a tiny 2-algorithm/2-function
+# sweep, redirected into a temp dir via config.py's PIPELINE_TEST_* env vars,
+# so it never touches the real data/outputs/metrics_data. ~13s. Deliberately
+# NOT named test_*.py so the fast suite above skips it - run it explicitly:
 python -m pytest tests/smoke_test_pipeline.py -v -s
 ```
+
+The smoke test is the one that catches wiring bugs (renamed modules, path changes, schema drift between steps) — the unit tests can't see those. Most of the real bugs found in this repo were caught by it, not by inspection.
+
+CI (`.github/workflows/tests.yml`) byte-compiles every pipeline script and runs the fast suite on push and PR. It installs only `pandas numpy pytest` on purpose: the unit tests never reach the heavy scientific stack, and building `cocoex` (a compiled C extension) in CI would be slow and fragile. The smoke test is not run in CI.
+
+### Editing the notebooks
+
+`05_analysis/*.ipynb` are large (one is 7.5 MB with embedded output). Do **not** read them in full — it will flood the context with base64 image data. Grep them, or manipulate the JSON programmatically with `json.load`/`json.dump(..., indent=1, ensure_ascii=False)` plus a trailing newline, which round-trips Jupyter's own formatting and keeps the diff to just your change.
 
 ## Common commands
 

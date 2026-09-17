@@ -20,3 +20,11 @@ figures_*/
 *.mdat
 *.rdat
 *.tdat
+
+# GUI sandbox: benchmark runs launched from the desktop app
+gui_runs/
+
+# PyInstaller
+build/
+dist/
+*.spec.bak

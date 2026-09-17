@@ -30,9 +30,15 @@ jobs:
       # py_compile neither imports nor executes, so it needs no dependencies.
       # This catches syntax errors in the pipeline scripts that the unit tests
       # never import (the clustering/benchmark/plotting steps).
+      #
+      # maxdepth 2 covers the numbered stage folders; the gui/ package nests
+      # deeper (gui/core, gui/panels, gui/viz, gui/models) and most of it is
+      # unreachable from the fast suite, so it is compiled explicitly.
       - name: Byte-compile every pipeline script
         run: |
           find . -maxdepth 2 -name "*.py" ! -path "./venv/*" -print0 \
+            | xargs -0 -n1 python -m py_compile
+          find ./gui -name "*.py" -print0 \
             | xargs -0 -n1 python -m py_compile
 
       # Note: tests/smoke_test_pipeline.py is intentionally NOT named test_*.py,

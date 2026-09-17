@@ -90,6 +90,94 @@ Two things there are easy to miss:
   **Caveat:** the results currently stored in `data/clustering_latest/` (and everything derived from them in `metrics_data/` and `figures_*/`) were produced *before* the seed was added, i.e. unseeded. Re-running the pipeline today will therefore **not** reproduce those exact numbers. This was a deliberate choice — the existing results were kept as-is rather than regenerated. Reproducibility applies to runs from this point on.
 - **`clustering_dir(method)`** maps the `-c` flag (`kmeans` / `dbscan` / `dbscan_adaptive`) to its data directory, and is used by *both* `cluster_trajectories.py` (writes) and `cluster_similarity.py` (reads). They previously each had their own copy of that mapping and disagreed about `dbscan_adaptive`, so that mode silently read a different directory than the one it wrote. Don't reintroduce a second copy.
 
+## The desktop GUI (`gui/`)
+
+A PySide6 front-end over the pipeline. It **imports** the pipeline modules
+rather than reimplementing them, so the science code stays the single source
+of truth. Nothing in `gui/` is a `run_pipeline.py` step.
+
+```bash
+python -m gui                 # run it (repo root, venv)
+python -m gui --self-test     # headless checks + opens the window once; no GUI session
+```
+
+```
+gui/
+  qt.py            the ONLY place PySide6 is imported; also forces QT_API and the
+                   matplotlib backend before matplotlib can pick PyQt6 instead
+  self_test.py     the checks that only fail once packaged (see Packaging)
+  core/            optimizers, problems, runner, workspace, datastore, coverage
+  viz/             registry (the catalog) + one module per visualization family
+  panels/          one module per tab
+  models/          QAbstractTableModel over pandas
+```
+
+### Two invariants worth not breaking
+
+- **Runs never write to `outputs/` by default.** They go to `gui_runs/<timestamp>/`
+  with a `manifest.json`. `run_benchmarks` writes by algorithm and problem id, so
+  a GUI run of an existing algorithm would otherwise overwrite real trajectories
+  in place. Writing to the real tree is a separately confirmed choice in the UI.
+- **Rendering never writes to `figures_*/`.** `entropy_plotting`, `spearman` and
+  friends call `savefig` unconditionally with hardcoded paths, and end in
+  `plt.close()`. `gui/viz/capture.py` disables show/savefig/close and hands back
+  the figure instead. If you add a Tier-1-style wrapper around a pipeline plot
+  function, route it through `render_with()` or you will silently overwrite
+  thesis figures on every click.
+
+### Pointing the app at a different results tree
+
+`config.py` derives every data directory from `REPO_ROOT` at import time,
+which is right for the pipeline but wrong for a GUI that may be a packaged app
+with no checkout. `gui/core/results_root.py` rebinds those `config` attributes
+at runtime (File > Open results folder..., persisted in QSettings). This works
+only because every GUI module reads `config.<NAME>` at call time rather than
+aliasing it at import - don't switch them to `from config import X as Y`.
+`invalidate_caches()` must drop every path-keyed cache on a move, or the app
+shows the previous tree's numbers under the new tree's name.
+
+A single GUI run directory is itself a valid results root: it contains
+`outputs/`, so the raw-trajectory views work against a run the app just made.
+The entropy/cosine/Spearman views still need the clustering and metric stages,
+which the GUI does not run.
+
+### Adding things
+
+- **A visualization**: write `render(params) -> Figure` and add one
+  `Visualization(...)` to `gui/viz/registry.py`. The parameter form is generated
+  from the declared parameters - every declared parameter must be one the render
+  actually reads (there is a test for this).
+- **A benchmark source**: subclass `ProblemSource` in `gui/core/problems.py`. The
+  adapter only has to satisfy the nine attributes `run_benchmarks` touches, which
+  is why BBOB/opfunu/CEC/custom all drive it unmodified.
+
+Two library traps that are absorbed there and should stay absorbed: opfunu
+silently **clamps** a fixed-dimension function instead of refusing it (so the
+dimension is always read back off the instance), and a CEC function constructed
+at an unsupported dimension can **abort the process** with no Python exception
+(so CEC dimensions come from `dim_supported`, never from probing).
+
+### Packaging
+
+`packaging/gui.spec` builds a one-dir bundle (~500 MB); the Windows `.exe` is
+built by `.github/workflows/build-windows.yml` because PyInstaller cannot
+cross-compile from Linux. Four things in the spec are load-bearing, and each
+produces a bundle that starts fine and then fails at runtime if dropped:
+
+1. `collect_submodules("mealpy")` - optimizers are found via
+   `pkgutil.walk_packages`, invisible to static analysis. Without it the app
+   launches with an empty optimizer list.
+2. `collect_data_files("opfunu")` - ~1190 CEC shift/rotation matrices.
+3. `collect_all("cocoex")` - compiled C extension plus data.
+4. `04_metrics`/`05_analysis` on `pathex` with their modules named in
+   `hiddenimports` - `gui/viz/registry.py` imports them by name at runtime,
+   since a directory called `04_metrics` is not an importable package.
+
+`pyarrow` is excluded in favour of `fastparquet` (same files, ~137 MB smaller)
+and `PyQt6` is excluded so two Qt bindings never land in one process.
+`python -m gui --self-test` checks all of the above and is what CI runs against
+the built exe.
+
 ## Testing
 
 `pytest` is in `requirements.txt`. Run both before committing anything that touches the pipeline.

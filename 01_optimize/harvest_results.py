@@ -7,7 +7,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 import os
+import config
 from config import OUTPUTS_DIR, DIMENSIONS, SEEDS
+from pipeline_api import Progress, StageResult
+
+STAGE = "harvest_results"
 
 
 def best_row_from_gbest(path):
@@ -17,16 +21,32 @@ def best_row_from_gbest(path):
     return coord_cols, best
 
 
-def main():
-    for d in DIMENSIONS:
-        base = f"{OUTPUTS_DIR}/dim_{d}"
+def run(progress_cb=None, cancel_event=None, dimensions=None):
+    """Build outputs/dim_{d}/results.csv from the g_best trajectories.
+
+    Reads OUTPUTS_DIR off `config` at call time rather than using the name
+    imported above, so the desktop app's "open a different results folder"
+    (gui/core/results_root.py) reaches this stage too.
+    """
+    dimensions = list(dimensions if dimensions is not None else DIMENSIONS)
+    outputs_dir = config.OUTPUTS_DIR
+    progress = Progress(progress_cb, cancel_event)
+    result_stage = StageResult(STAGE)
+
+    for d in dimensions:
+        base = f"{outputs_dir}/dim_{d}"
         rows = []
         coord_cols_ref = None
 
-        for algorithm in sorted(os.listdir(base)):
+        algorithms = [a for a in sorted(os.listdir(base))
+                      if os.path.isdir(f"{base}/{a}")]
+        progress.begin(len(algorithms), f"harvesting dim {d}")
+
+        for algorithm in algorithms:
+            if not progress.item(algorithm):
+                result_stage.cancelled = True
+                return result_stage
             alg_dir = f"{base}/{algorithm}"
-            if not os.path.isdir(alg_dir):
-                continue
             for problem_folder in sorted(os.listdir(alg_dir)):
                 pf = problem_folder
                 parts = pf.replace('F', '').replace('I', '').split('_')
@@ -53,7 +73,15 @@ def main():
         result = result[ordered]
         out_path = f"{base}/results.csv"
         result.to_csv(out_path, index=False)
+        result_stage.written += 1
+        result_stage.notes.append(f"dim {d}: {len(result)} rows")
         print(f"wrote {out_path}  ({len(result)} rows)")
+
+    return result_stage
+
+
+def main():
+    run()
 
 
 if __name__ == "__main__":

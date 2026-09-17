@@ -19,6 +19,8 @@ from contextlib import contextmanager
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
+from gui.viz import figure_theme
+
 
 @contextmanager
 def offscreen_figures():
@@ -77,9 +79,14 @@ def render_with(plot_callable, *args, **kwargs):
 
     Returns the last figure captured, which is the one the function was
     building when it tried to save or close.
+
+    The figure is drawn under the app's matplotlib style and then corrected
+    in place, because seaborn's clustermaps and FacetGrids fix their colours
+    at construction and ignore the surrounding rc_context.
     """
-    with offscreen_figures() as figures:
-        result = plot_callable(*args, **kwargs)
+    with figure_theme.styled():
+        with offscreen_figures() as figures:
+            result = plot_callable(*args, **kwargs)
 
     # facet_by_dim and friends already hand a figure back explicitly. Those
     # never hit show/savefig/close, so they are still registered with pyplot
@@ -92,9 +99,15 @@ def render_with(plot_callable, *args, **kwargs):
 
     if returned is not None:
         _detach(returned)
-        return returned
+        return _finish(returned)
     if figures:
-        return figures[-1]
+        return _finish(figures[-1])
     raise RuntimeError(
         f"{getattr(plot_callable, '__name__', plot_callable)} produced no figure"
     )
+
+
+def _finish(figure):
+    figure_theme.apply_to(figure)
+    figure_theme.cap_figure_size(figure)
+    return figure

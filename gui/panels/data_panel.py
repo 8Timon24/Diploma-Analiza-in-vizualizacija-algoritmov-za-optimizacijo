@@ -5,6 +5,8 @@ virtualized, so opening a 336k-row file is as cheap as opening a 20-row one.
 """
 from pathlib import Path
 
+from gui import theme
+from gui.panels import layout as panel_layout
 from gui.qt import QtCore, QtWidgets, Qt, Signal
 from gui.core import datastore
 from gui.core import results_root
@@ -20,11 +22,11 @@ class DataPanel(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._current = None
+        self._heatmap = False
 
         self.tree = QtWidgets.QTreeWidget()
         self.tree.setHeaderHidden(True)
         self.tree.setUniformRowHeights(True)
-        self.tree.setMinimumWidth(280)
         self.tree.itemExpanded.connect(self._populate_children)
         self.tree.itemSelectionChanged.connect(self._on_selected)
 
@@ -37,18 +39,25 @@ class DataPanel(QtWidgets.QWidget):
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectItems
         )
         self.table.horizontalHeader().setStretchLastSection(False)
-        self.table.verticalHeader().setDefaultSectionSize(22)
+        # Column auto-sizing asks the model for every row unless this is
+        # bounded, which on entropy_granular (336k rows) means 336k pandas
+        # lookups per column. The first screenful is enough to size by.
+        self.table.horizontalHeader().setResizeContentsPrecision(64)
+        self.table.setTextElideMode(Qt.TextElideMode.ElideRight)
 
         self.title = QtWidgets.QLabel("Select a file")
-        font = self.title.font()
-        font.setBold(True)
-        self.title.setFont(font)
+        self.title.setProperty("class", "heading")
+        # These are absolute paths; without wrapping they force the whole
+        # header pane wide or get elided with no way to read them.
+        self.title.setWordWrap(True)
         self.details = QtWidgets.QLabel()
-        self.details.setStyleSheet("color: palette(mid);")
+        self.details.setProperty("class", "hint")
         self.details.setWordWrap(True)
 
         self.export_button = QtWidgets.QPushButton("Export as CSV...")
         self.export_button.setEnabled(False)
+        self.export_button.setShortcut("Ctrl+E")
+        self.export_button.setToolTip("Save the table as it is shown (Ctrl+E)")
         self.export_button.clicked.connect(self._export)
 
         header = QtWidgets.QHBoxLayout()
@@ -61,20 +70,27 @@ class DataPanel(QtWidgets.QWidget):
 
         right = QtWidgets.QWidget()
         right_layout = QtWidgets.QVBoxLayout(right)
-        right_layout.setContentsMargins(8, 0, 0, 0)
+        right_layout.setContentsMargins(panel_layout.S, 0, 0, 0)
+        right_layout.setSpacing(panel_layout.S)
         right_layout.addLayout(header)
         right_layout.addWidget(self.table, 1)
 
+        # Proportions, not pixel caps: a hard setMaximumWidth made the
+        # splitter handle look broken - it dragged and the pane refused
+        # to grow.
         splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(self.tree)
         splitter.addWidget(right)
+        splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
+        splitter.setSizes([320, 980])
+        splitter.setChildrenCollapsible(False)
 
         # Which results tree this is showing. Without it, an empty browser is
         # indistinguishable from "looking in the wrong place".
         self.root_label = QtWidgets.QLabel()
         self.root_label.setWordWrap(True)
-        self.root_label.setStyleSheet("color: palette(mid); font-size: 11px;")
+        self.root_label.setProperty("class", "hint")
         change = QtWidgets.QPushButton("Change...")
         change.setToolTip("Point the app at a different results folder")
         change.clicked.connect(self.changeRootRequested)
@@ -83,8 +99,7 @@ class DataPanel(QtWidgets.QWidget):
         root_row.addWidget(self.root_label, 1)
         root_row.addWidget(change)
 
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout = panel_layout.column(self)
         layout.addLayout(root_row)
         layout.addWidget(splitter, 1)
 
@@ -95,7 +110,15 @@ class DataPanel(QtWidgets.QWidget):
     def refresh(self):
         self.tree.clear()
         summary = results_root.inspect(results_root.current_root())
-        self.root_label.setText(f"{summary.path}\n{summary.describe()}")
+        self.root_label.setText(f"{summary.path}  -  {summary.describe()}")
+
+        # The table belongs to the tree that was just discarded. Keeping it on
+        # screen meant the header named a file from the previous results root
+        # and Export wrote that file's data under the new root's name.
+        self._current = None
+        self._heatmap = False
+        self.model.set_frame(None)
+        self.export_button.setEnabled(False)
 
         roots = datastore.build_tree()
         if not roots:
@@ -105,9 +128,9 @@ class DataPanel(QtWidgets.QWidget):
                 "Run a benchmark from the Setup tab, or use Change... to point "
                 "the app at a folder that already has results."
             )
-            self.model.set_frame(None)
-            self.export_button.setEnabled(False)
             return
+        self.title.setText("Select a file")
+        self.details.setText("")
         for node in roots:
             self._add_item(self.tree, node)
 
@@ -167,33 +190,52 @@ class DataPanel(QtWidgets.QWidget):
     # -- table -----------------------------------------------------------
 
     def _load(self, node):
+        # One finally for the whole body: an exception anywhere past the read
+        # (set_frame, resizeColumnsToContents) used to leave the application
+        # with a busy cursor that nothing ever restored.
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            table = datastore.load_table(node.path)
-        except Exception as exc:
+            try:
+                table = datastore.load_table(node.path)
+            except Exception as exc:
+                self.title.setText(node.label)
+                self.details.setProperty("class", "error")
+                self.details.setText(f"Could not read this file: {exc}")
+                theme.restyle(self.details)
+                self.model.set_frame(None)
+                self._current = None
+                self.export_button.setEnabled(False)
+                return
+
+            heatmap = node.kind == "matrix"
+            # Drop any sort indicator left over from the previous file before
+            # sorting is re-enabled, or the view immediately re-sorts this
+            # frame by a column index chosen for a different one.
+            self.table.setSortingEnabled(False)
+            self.table.horizontalHeader().setSortIndicator(
+                -1, Qt.SortOrder.AscendingOrder
+            )
+            self.model.set_frame(table.frame, heatmap=heatmap)
+            self.table.setSortingEnabled(not heatmap)
+            self.table.verticalHeader().setVisible(True)
+            # Sampling a bounded number of rows keeps this O(columns) instead
+            # of walking all 336k rows of entropy_granular through the model.
+            self.table.resizeColumnsToContents()
+
+            self._current = table
+            self._heatmap = heatmap
+            self.export_button.setEnabled(True)
+            rows, columns = table.shape
+            self.title.setText(str(_display_path(table.path)))
+            parts = [f"{rows:,} rows x {columns} columns", f"{table.fmt}"]
+            if heatmap:
+                parts.append("correlation matrix - shaded, not sortable")
+            parts.extend(table.notes)
+            self.details.setProperty("class", "hint")
+            self.details.setText("  -  ".join(parts))
+            theme.restyle(self.details)
+        finally:
             QtWidgets.QApplication.restoreOverrideCursor()
-            self.title.setText(node.label)
-            self.details.setText(f"Could not read this file: {exc}")
-            self.model.set_frame(None)
-            self.export_button.setEnabled(False)
-            return
-
-        heatmap = node.kind == "matrix"
-        self.model.set_frame(table.frame, heatmap=heatmap)
-        self.table.setSortingEnabled(not heatmap)
-        self.table.verticalHeader().setVisible(True)
-        self.table.resizeColumnsToContents()
-        QtWidgets.QApplication.restoreOverrideCursor()
-
-        self._current = table
-        self.export_button.setEnabled(True)
-        rows, columns = table.shape
-        self.title.setText(str(_display_path(table.path)))
-        parts = [f"{rows:,} rows x {columns} columns", f"{table.fmt}"]
-        if heatmap:
-            parts.append("correlation matrix - shaded, not sortable")
-        parts.extend(table.notes)
-        self.details.setText("  -  ".join(parts))
 
     def _export(self):
         if self._current is None:
@@ -206,7 +248,16 @@ class DataPanel(QtWidgets.QWidget):
             return
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            self.model.frame.to_csv(target, index=self._current.path.stem.startswith("spearman"))
+            # A matrix carries its labels in the index, so dropping it would
+            # silently export half the data. This used to be decided by
+            # string-matching the filename, which only covered spearman_*.
+            self.model.frame.to_csv(target, index=self._heatmap)
+        except OSError as exc:
+            QtWidgets.QMessageBox.warning(
+                self, "Export failed", f"Could not write {target}:\n\n{exc}"
+            )
+        else:
+            self.details.setText(f"Exported to {target}")
         finally:
             QtWidgets.QApplication.restoreOverrideCursor()
 

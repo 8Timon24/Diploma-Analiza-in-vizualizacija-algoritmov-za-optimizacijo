@@ -26,6 +26,7 @@ sys.path.insert(0, str(REPO_ROOT))
 import config
 from gui.core import coverage as coverage_core
 from gui.viz import clustering, exploration, metrics, solutions, style
+from gui.viz import figure_theme
 from gui.viz.capture import render_with
 
 SCALAR_METRICS = ["entropy", "fitness", "exploration", "diversity"]
@@ -79,6 +80,19 @@ class Visualization:
 
     def is_available(self):
         return True if self.requires is None else bool(self.requires())
+
+    def draw(self, params):
+        """Render this entry with the app's figure style applied.
+
+        The single point every catalog entry passes through. The entries that
+        wrap a pipeline function are already styled inside render_with; the
+        ones that build their own figure (exploration, clustering, metrics,
+        solutions) are styled here, so no viz module has to remember to.
+        """
+        with figure_theme.styled():
+            figure = self.render(params)
+        figure_theme.apply_to(figure)
+        return figure_theme.cap_figure_size(figure)
 
     def check_coverage(self, params):
         """What is missing for this parameter set, if anything."""

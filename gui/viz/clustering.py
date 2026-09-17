@@ -82,8 +82,11 @@ def cluster_occupancy(params):
             subset.groupby(["iteration", "cluster"])["scaled_raw_y"].min()
             .cummin().to_frame().reset_index()
         )
+        # legend=False coloured every cluster and then said which was which
+        # nowhere at all.
         sns.lineplot(data=best, x="iteration", y="scaled_raw_y", hue="cluster",
-                     palette="tab10", legend=False, ax=fitness_axes)
+                     palette="tab10", ax=fitness_axes)
+        fitness_axes.legend(title="Cluster", ncol=2, loc="upper right")
         fitness_axes.set_xlabel("Iteration")
         fitness_axes.set_ylabel("Best scaled fitness (running minimum)")
         fitness_axes.set_title("Best fitness found per cluster", fontsize=11)
@@ -174,7 +177,8 @@ def algorithm_similarity(params):
             bbox_to_anchor=(0.005, 0.80), fontsize=8, frameon=False,
         )
         grid.figure.suptitle(
-            f"Algorithm similarity ({params['statistic']}, dim {dimension})", y=1.01
+            f"Algorithm similarity ({params['statistic']}, dim {dimension})",
+            y=0.995,
         )
         return grid.figure
 

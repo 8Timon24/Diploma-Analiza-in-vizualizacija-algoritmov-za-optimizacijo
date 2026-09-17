@@ -18,16 +18,29 @@ import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
 
+from gui.panels import layout as panel_layout
 from gui.qt import QtCore, QtWidgets, Qt
 from gui.core import optimizers as optimizers_core
 from gui.panels.widgets import CheckableList
-from gui.viz import style, trajectory
+from gui.viz import figure_theme, style, trajectory
 
 import config
 
 MAX_ALGORITHMS = 4
 TRAIL_ALPHA = 0.10
 DEFAULT_FPS = 4
+
+
+def _preferred_index(values, wanted):
+    """Index of `wanted` in `values`, or 0 when it is not there.
+
+    Every one of these lists comes from config.py, which honours the
+    PIPELINE_TEST_* overrides, so no fixed value is guaranteed to be present.
+    """
+    try:
+        return list(values).index(wanted)
+    except ValueError:
+        return 0
 
 
 class TrajectoryPanel(QtWidgets.QWidget):
@@ -49,26 +62,31 @@ class TrajectoryPanel(QtWidgets.QWidget):
         self.figure = Figure(figsize=(7, 7), layout="constrained")
         self.axes = self.figure.add_subplot(1, 1, 1)
         self.axes.set_title("Choose a problem and press Load")
+        figure_theme.apply_to(self.figure)
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.toolbar = NavigationToolbar2QT(self.canvas, self)
 
         playback = self._build_playback()
 
-        right = QtWidgets.QVBoxLayout()
-        right.setContentsMargins(0, 0, 0, 0)
+        right = panel_layout.column(margins=(panel_layout.S, 0, 0, 0))
         right.addWidget(self.toolbar)
         right.addWidget(self.canvas, 1)
         right.addLayout(playback)
         right_host = QtWidgets.QWidget()
         right_host.setLayout(right)
 
+        # Proportions, not pixel caps: a hard setMaximumWidth made the
+        # splitter handle look broken - it dragged and the pane refused
+        # to grow.
         splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(controls)
         splitter.addWidget(right_host)
+        splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
+        splitter.setSizes([330, 970])
+        splitter.setChildrenCollapsible(False)
 
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout = panel_layout.column(self)
         layout.addWidget(splitter)
         self._set_playback_enabled(False)
 
@@ -77,25 +95,34 @@ class TrajectoryPanel(QtWidgets.QWidget):
     def _build_controls(self):
         box = QtWidgets.QGroupBox("Problem")
         form = QtWidgets.QFormLayout(box)
-        box.setMaximumWidth(330)
 
         self.function = QtWidgets.QComboBox()
         for f in config.FUNCTIONS:
             self.function.addItem(f"F{f}", f)
-        self.function.setCurrentIndex(config.FUNCTIONS.index(16))
+        # F16 (Weierstrass) is the most instructive default, but config.FUNCTIONS
+        # is overridable via PIPELINE_TEST_FUNCTIONS - a bare .index(16) raised
+        # ValueError here and took the whole window down, since this panel is
+        # built inside MainWindow.__init__.
+        self.function.setCurrentIndex(_preferred_index(config.FUNCTIONS, 16))
 
         self.instance = QtWidgets.QComboBox()
         for i in config.INSTANCES:
             self.instance.addItem(str(i), i)
-        self.instance.setCurrentIndex(min(2, len(config.INSTANCES) - 1))
+        self.instance.setCurrentIndex(min(2, max(len(config.INSTANCES) - 1, 0)))
 
         self.run = QtWidgets.QComboBox()
         for r in config.SEEDS:
             self.run.addItem(str(r), r)
 
+        # Fall back to whatever the first two algorithms are: the named pair is
+        # absent from a trimmed ALGORITHMS_OF_INTEREST, and an empty default
+        # makes Load fail on a panel the user has not touched yet.
+        preferred = [a for a in ("OriginalDE", "OriginalGWO")
+                     if a in config.ALGORITHMS_OF_INTEREST]
         self.algorithms = CheckableList(
-            list(config.ALGORITHMS_OF_INTEREST), ["OriginalDE", "OriginalGWO"],
-            height=190,
+            list(config.ALGORITHMS_OF_INTEREST),
+            preferred or list(config.ALGORITHMS_OF_INTEREST)[:2],
+            rows=8,
         )
 
         self.colour_mode = QtWidgets.QComboBox()
@@ -110,12 +137,16 @@ class TrajectoryPanel(QtWidgets.QWidget):
         self.show_trail.toggled.connect(lambda _on: self._draw_current())
 
         self.load_button = QtWidgets.QPushButton("Load")
+        self.load_button.setProperty("class", "primary")
+        self.load_button.setDefault(True)
+        self.load_button.setShortcut("Ctrl+Return")
+        self.load_button.setToolTip("Load this problem's trajectories (Ctrl+Return)")
         self.load_button.clicked.connect(self.load)
 
         self.status = QtWidgets.QLabel("Dimension 2 only - this plots the real "
                                        "search space.")
         self.status.setWordWrap(True)
-        self.status.setStyleSheet("color: palette(mid); font-size: 11px;")
+        self.status.setProperty("class", "hint")
 
         form.addRow("Function:", self.function)
         form.addRow("Instance:", self.instance)
@@ -130,6 +161,8 @@ class TrajectoryPanel(QtWidgets.QWidget):
 
     def _build_playback(self):
         self.play_button = QtWidgets.QPushButton("Play")
+        self.play_button.setShortcut("Space")
+        self.play_button.setToolTip("Play / pause the animation (Space)")
         self.play_button.clicked.connect(self.toggle_play)
 
         self.slider = QtWidgets.QSlider(Qt.Orientation.Horizontal)
@@ -141,12 +174,17 @@ class TrajectoryPanel(QtWidgets.QWidget):
         self.iteration_label.setMinimumWidth(110)
 
         self.fps = QtWidgets.QSpinBox()
+        self.fps.setToolTip("Playback speed, in frames (iterations) per second")
         self.fps.setRange(1, 30)
         self.fps.setValue(DEFAULT_FPS)
         self.fps.setSuffix(" fps")
         self.fps.valueChanged.connect(self._retime)
 
         self.export_button = QtWidgets.QPushButton("Export GIF...")
+        self.export_button.setToolTip(
+            "Render every iteration to an animated GIF. This runs in the "
+            "window and can take minutes for a long run."
+        )
         self.export_button.clicked.connect(self._export_gif)
 
         row = QtWidgets.QHBoxLayout()

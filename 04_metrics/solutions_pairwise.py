@@ -9,27 +9,45 @@ import numpy as np
 import pandas as pd
 import os
 from itertools import combinations
+import config
 from config import (
     ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES, SEEDS as RUNS,
     OUTPUTS_DIR as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
 )
+from pipeline_api import Progress, StageResult
 
-if __name__ == "__main__":
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+STAGE = "solutions_pairwise"
+
+def run(progress_cb=None, cancel_event=None, dimensions=None):
+    """Pairwise difference in final solution location and fitness."""
+    dims = list(dimensions if dimensions is not None else DIMENSIONS)
+    input_dir = config.OUTPUTS_DIR
+    output_dir = config.METRICS_DIR
+    progress = Progress(progress_cb, cancel_event)
+    result = StageResult(STAGE)
+
+    os.makedirs(output_dir, exist_ok=True)
     algorithm_pairs = list(combinations(sorted(ALGORITHMS_OF_INTEREST), 2))
 
-    for d in DIMENSIONS:
-        os.makedirs(f'{OUTPUT_DIR}/fitness/dim_{d}', exist_ok=True)
-        os.makedirs(f'{OUTPUT_DIR}/location/dim_{d}', exist_ok=True)
-        df = pd.read_csv(f'{INPUT_DIR}/dim_{d}/results.csv')
-        for (f, i), tmp in df.groupby(['problem_id', 'instance_id']):
+    for d in dims:
+        os.makedirs(f'{output_dir}/fitness/dim_{d}', exist_ok=True)
+        os.makedirs(f'{output_dir}/location/dim_{d}', exist_ok=True)
+        df = pd.read_csv(f'{input_dir}/dim_{d}/results.csv')
+        # Hoisted out of the innermost loop: it depends only on the dimension,
+        # and was being rebuilt once per pair per run.
+        cols = [f'x{k}' for k in range(1, d+1)]
+        groups = list(df.groupby(['problem_id', 'instance_id']))
+        progress.begin(len(groups), f"solutions dim {d}")
+        for (f, i), tmp in groups:
+            if not progress.item(f"F{f}_I{i}"):
+                result.cancelled = True
+                return result
             rows_location = []  # (Alg1, Alg2, F, I) run_id, metric
             rows_fitness = []
             for r in RUNS:
                 run_data = tmp[tmp['seed'] == r]
                 for pair in algorithm_pairs:
                     alg1, alg2 = pair
-                    cols = [f'x{k}' for k in range(1, d+1)]
 
                     loc_1 = np.array(run_data[run_data['algorithm']==alg1][cols])
                     loc_2 = np.array(run_data[run_data['algorithm']==alg2][cols])
@@ -44,5 +62,16 @@ if __name__ == "__main__":
 
             result_fitness = pd.DataFrame(rows_fitness)
             result_location = pd.DataFrame(rows_location)
-            result_fitness.to_csv(f'{OUTPUT_DIR}/fitness/dim_{d}/F{f}_I{i}.csv', index=False)
-            result_location.to_csv(f'{OUTPUT_DIR}/location/dim_{d}/F{f}_I{i}.csv', index=False)
+            result_fitness.to_csv(f'{output_dir}/fitness/dim_{d}/F{f}_I{i}.csv', index=False)
+            result_location.to_csv(f'{output_dir}/location/dim_{d}/F{f}_I{i}.csv', index=False)
+            result.written += 2
+
+    return result
+
+
+def main():
+    run()
+
+
+if __name__ == "__main__":
+    main()

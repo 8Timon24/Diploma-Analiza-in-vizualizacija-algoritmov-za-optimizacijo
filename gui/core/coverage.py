@@ -51,6 +51,10 @@ class Coverage:
 
     gaps: list = field(default_factory=list)
     recipe: list = field(default_factory=list)
+    # The same steps as `recipe`, but as pipeline stage names the Process tab
+    # can actually run. `recipe` stays the human-readable command list, for
+    # people who would rather run it themselves.
+    stages: tuple = ()
     caveat: str = ""
     estimate: str = ""
     # What a run would have to cover to close these gaps. Used to prefill the
@@ -129,9 +133,34 @@ def _entropy_recipe(dimension, algorithms, functions):
 CLUSTERING_CAVEAT = (
     "Adding an algorithm re-runs KMeans on the combined trajectories for that "
     "problem, so cluster assignments - and therefore the entropy and cosine "
-    "metrics of every OTHER algorithm on it - will change. Generated data is "
-    "written to a separate workspace, leaving data/ and metrics_data/ intact."
+    "metrics of every OTHER algorithm on it - will change. A benchmark run "
+    "from this app writes to a separate workspace, but running the clustering "
+    "and metric stages overwrites data/ and metrics_data/ in place."
 )
+
+
+# Pipeline stage names, kept here rather than imported from gui.core.pipeline:
+# that module imports Qt, and this one is used by plain unit tests.
+ENTROPY_STAGES = ("benchmark", "preprocess", "clustering", "entropy_calc")
+
+#: The pipeline order, mirrored. gui/core/pipeline.py owns the real table and
+#: a test pins the two against run_pipeline.py.
+_PIPELINE_ORDER = (
+    "benchmark", "harvest_results", "preprocess", "clustering",
+    "aggregate_cosine", "entropy_calc", "entropy_pairwise", "cosine_pairwise",
+    "cosine_columns_pairwise", "exploration_pairwise", "solutions_pairwise",
+    "merge", "build_scalars", "spearman",
+)
+
+
+def _stages_from(name):
+    return _PIPELINE_ORDER[_PIPELINE_ORDER.index(name):]
+
+
+def _merge_stages(left, right):
+    """Union of two stage tuples, kept in pipeline order."""
+    wanted = set(left) | set(right)
+    return tuple(n for n in _PIPELINE_ORDER if n in wanted)
 
 
 def _estimate(n_algorithms, n_functions, dimension, instances=None, seeds=None):
@@ -200,6 +229,7 @@ def check_entropy(dimension, algorithms, functions):
         wanted_algorithms = {a for gap in coverage.gaps for a in gap.algorithms} or set(algorithms)
         wanted_functions = {f for gap in coverage.gaps for f in gap.functions} or set(functions)
         coverage.recipe = _entropy_recipe(dimension, wanted_algorithms, wanted_functions)
+        coverage.stages = ENTROPY_STAGES
         coverage.caveat = CLUSTERING_CAVEAT
         coverage.estimate = _estimate(
             len(wanted_algorithms), len(wanted_functions), dimension
@@ -217,6 +247,7 @@ def check_entropy_multi(dimensions, algorithms, functions):
         single = check_entropy(dimension, algorithms, functions)
         combined.gaps.extend(single.gaps)
         combined.recipe.extend(r for r in single.recipe if r not in combined.recipe)
+        combined.stages = _merge_stages(combined.stages, single.stages)
         combined.caveat = combined.caveat or single.caveat
         combined.wanted_algorithms = tuple(
             sorted(set(combined.wanted_algorithms) | set(single.wanted_algorithms))
@@ -232,12 +263,13 @@ def check_entropy_multi(dimensions, algorithms, functions):
     return combined
 
 
-def check_file(path, what, recipe):
+def check_file(path, what, recipe, stages=()):
     """A visualization whose input is a single computed file."""
     coverage = Coverage()
     if not Path(path).exists():
         coverage.gaps.append(Gap(what=what))
         coverage.recipe = recipe
+        coverage.stages = tuple(stages)
     return coverage
 
 
@@ -309,6 +341,7 @@ def check_results(dimension, function, instance, algorithms):
         coverage.recipe = _benchmark_recipe(
             dimension, algorithms, [function], [instance]
         ) + ["python 01_optimize/harvest_results.py"]
+        coverage.stages = ("benchmark", "harvest_results")
         coverage.wanted_algorithms = tuple(sorted(algorithms or ()))
         coverage.wanted_dimensions = (dimension,)
         coverage.wanted_functions = (int(function),)
@@ -355,6 +388,7 @@ def check_clustering(dimension, function, instance, method="kmeans"):
             "python 02_preprocess/preprocess_data.py",
             f"python 03_cluster/cluster_trajectories.py -c {method}",
         ],
+        stages=("preprocess", "clustering"),
     )
 
 
@@ -364,6 +398,7 @@ def check_similarity(dimension, method="kmeans", statistic="mean"):
         base / f"algorithm_{statistic}_similarity_{dimension}D.csv",
         f"No aggregate similarity matrix for dimension {dimension}",
         [f"python 03_cluster/cluster_similarity.py -c {method}"],
+        stages=("aggregate_cosine",),
     )
 
 
@@ -372,6 +407,7 @@ def check_merged(dimension):
         Path(config.MERGED_DIR) / f"merged_dim_{dimension}.csv",
         f"metrics_data/merged/merged_dim_{dimension}.csv does not exist",
         ["python 05_analysis/merge_metrics.py"],
+        stages=("merge",),
     )
 
 
@@ -385,6 +421,7 @@ def check_spearman(dimension):
             "python run_pipeline.py --from cosine_pairwise",
             "  (needs every pairwise metric computed first)",
         ],
+        stages=_stages_from("cosine_pairwise"),
     )
 
 
@@ -393,6 +430,7 @@ def check_scalars(dimensions):
         config.SCALARS_CSV,
         "metrics_data/scalars.csv has not been built",
         ["python 05_analysis/build_scalars.py"],
+        stages=("build_scalars",),
     )
     if coverage.ok and dimensions:
         frame = pd.read_csv(config.SCALARS_CSV, usecols=["dim"])
@@ -406,4 +444,5 @@ def check_scalars(dimensions):
                 "python run_pipeline.py --from benchmark   (for the missing dimension)",
                 "python 05_analysis/build_scalars.py",
             ]
+            coverage.stages = ("build_scalars",)
     return coverage

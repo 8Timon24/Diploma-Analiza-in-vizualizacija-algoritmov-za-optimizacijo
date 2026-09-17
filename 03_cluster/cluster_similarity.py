@@ -18,19 +18,26 @@ import matplotlib.pyplot as plt
 from utils import *
 import argparse
 from config import DIMENSIONS, CLUSTERING_METHODS, clustering_dir
+from pipeline_api import Progress, StageResult
 
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-parser = argparse.ArgumentParser(prog='Clustering on meta-heuristic algorithm\'s trajectories', usage='%(prog)s [options]')
-parser.add_argument('-c', choices=CLUSTERING_METHODS, default='kmeans',
-                    help="Choose the clustering method (default: kmeans)")
-args = parser.parse_args()
+STAGE = "aggregate_cosine"
+DEFAULT_METHOD = "kmeans"
 
-# Must match what cluster_trajectories.py wrote for the same method - hence the
-# shared config.clustering_dir() rather than a second copy of the mapping.
-CLUSTER_FEATURES_DIR = clustering_dir(args.c)
+
+def _build_parser():
+    """Built on demand, never at import - see cluster_trajectories._build_parser
+    for why parse_args() at module scope was a hazard."""
+    parser = argparse.ArgumentParser(
+        prog='Clustering on meta-heuristic algorithm\'s trajectories',
+        usage='%(prog)s [options]')
+    parser.add_argument('-c', choices=CLUSTERING_METHODS, default=DEFAULT_METHOD,
+                        help="Choose the clustering method (default: kmeans)")
+    return parser
+
 
 # Sub-directory pattern for cluster distributions per dimension
 CLUSTER_DISTRIBUTIONS_SUBDIR = 'cluster_distributions'
@@ -285,17 +292,38 @@ def process_dimension(dimension, cluster_features_dir,
 # Entry point
 # ---------------------------------------------------------------------------
 
-def main():
+def run(progress_cb=None, cancel_event=None, method=DEFAULT_METHOD,
+        dimensions=None):
+    """Aggregate pairwise cosine similarity for every configured dimension.
+
+    Reads the directory cluster_trajectories.py wrote for the same `method`,
+    via the shared config.clustering_dir() - never a second copy of that
+    mapping, which is how dbscan_adaptive once read a different folder than
+    it wrote.
     """
-    Main entry point: iterate over all configured dimensions and process each.
-    """
-    for dimension in DIMENSIONS:
+    dims = list(dimensions if dimensions is not None else DIMENSIONS)
+    cluster_features_dir = clustering_dir(method)
+    progress = Progress(progress_cb, cancel_event)
+    result = StageResult(STAGE, notes=[f"method={method}"])
+
+    progress.begin(len(dims), "aggregate cosine")
+    for dimension in dims:
+        if not progress.item(f"dim {dimension}"):
+            result.cancelled = True
+            return result
         process_dimension(
             dimension,
-            CLUSTER_FEATURES_DIR,
+            cluster_features_dir,
             CLUSTER_DISTRIBUTIONS_SUBDIR,
             SIMILARITY_OUTPUT_SUBDIR
         )
+        result.written += len(AGGREGATIONS)
+    return result
+
+
+def main():
+    args = _build_parser().parse_args()
+    run(method=args.c)
 
 
 if __name__ == '__main__':

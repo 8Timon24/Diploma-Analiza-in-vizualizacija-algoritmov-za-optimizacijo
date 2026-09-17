@@ -94,7 +94,8 @@ Two things there are easy to miss:
 
 A PySide6 front-end over the pipeline. It **imports** the pipeline modules
 rather than reimplementing them, so the science code stays the single source
-of truth. Nothing in `gui/` is a `run_pipeline.py` step.
+of truth. Nothing in `gui/` is a `run_pipeline.py` step - but the app can
+now *run* those steps (see **Running the pipeline from the GUI** below).
 
 ```bash
 python -m gui                 # run it (repo root, venv)
@@ -105,12 +106,44 @@ python -m gui --self-test     # headless checks + opens the window once; no GUI 
 gui/
   qt.py            the ONLY place PySide6 is imported; also forces QT_API and the
                    matplotlib backend before matplotlib can pick PyQt6 instead
+  theme.py         the ONLY place colours, spacing and type are defined
   self_test.py     the checks that only fail once packaged (see Packaging)
-  core/            optimizers, problems, runner, workspace, datastore, coverage
+  core/            optimizers, problems, runner, workspace, datastore,
+                   coverage, pipeline (the stage table + in-process runner)
   viz/             registry (the catalog) + one module per visualization family
-  panels/          one module per tab
+                   + figure_theme.py (matplotlib styling, app-only)
+  panels/          one module per tab + layout.py (spacing helpers) and
+                   job_panel.py (the worker-thread lifecycle both long-job
+                   panels share)
   models/          QAbstractTableModel over pandas
 ```
+
+### Styling
+
+`gui/theme.py` owns the light and dark palettes, the spacing scale
+(`SPACE_XS/S/M/L`) and one application stylesheet. It follows the OS colour
+scheme via `QStyleHints.colorScheme()` and re-applies on `colorSchemeChanged`.
+Two rules:
+
+- **A panel never names a colour.** It sets `setProperty("class", ...)` —
+  `hint`, `error`, `success`, `warning`, `heading`, `metric`, `callout`,
+  `primary`, `destructive` — and calls `theme.restyle(widget)` if it changes
+  that property after the widget is shown, because Qt caches the resolved
+  stylesheet per widget. Hardcoded hex in a panel is how the app ended up
+  unreadable on a dark desktop.
+- **`QComboBox`, `QSpinBox` and `QDoubleSpinBox` are deliberately left
+  unstyled.** Giving them a border in the stylesheet makes Qt stop drawing
+  their sub-controls natively, and a stylesheet cannot draw a replacement
+  arrow without shipping an image: overriding `::down-arrow` renders a stray
+  dash, omitting it renders nothing. Fusion draws them from the palette,
+  which is themed.
+
+`gui/viz/figure_theme.py` is the matplotlib half — rcParams, one sequential
+and one diverging colormap, a 9pt floor on every font. It is applied at
+`Visualization.draw()` and inside `capture.render_with()`, so every figure
+gets it without any viz module opting in. This is **app-only on purpose**:
+the pipeline scripts that write `figures_*/` keep their own appearance, so
+the figures already in the thesis stay consistent with each other.
 
 ### Two invariants worth not breaking
 
@@ -138,8 +171,51 @@ shows the previous tree's numbers under the new tree's name.
 
 A single GUI run directory is itself a valid results root: it contains
 `outputs/`, so the raw-trajectory views work against a run the app just made.
-The entropy/cosine/Spearman views still need the clustering and metric stages,
-which the GUI does not run.
+The entropy/cosine/Spearman views need the clustering and metric stages, which
+the Process tab can run against that root.
+
+### Running the pipeline from the GUI
+
+The Process tab runs the stages **in process**, not as subprocesses. That is
+forced by packaging: the bundle ships no interpreter, so in a frozen app
+`sys.executable` is the GUI itself and `subprocess` would just relaunch it.
+Three pieces:
+
+- **`pipeline_api.py`** (repo root) defines the contract every stage
+  implements: `run(progress_cb=None, cancel_event=None, ...) -> StageResult`,
+  with a `Progress` helper that both reports per item and answers "should I
+  stop?". Modelled on `helper_functions.run_benchmarks`, which already had
+  that pair. Every stage script's `__main__` block is now a one-line wrapper
+  around its `run()` - **keep it that way**, and keep `run_pipeline.py`
+  invoking the scripts as subprocesses, because `tests/smoke_test_pipeline.py`
+  passing unchanged is what proves the refactor did not move the science.
+- **`gui/core/pipeline.py`** holds `STAGES`, which mirrors
+  `run_pipeline.STEPS` name-for-name and in the same order (a test pins this,
+  so "start from clustering" and `--from clustering` cannot diverge), plus
+  `PipelineRunner`. Each stage declares which `config` directories it
+  overwrites; the confirmation dialog is built from that, so a stage with no
+  declared `writes` would silently destroy data nobody was warned about.
+- **`gui/panels/pipeline_panel.py`** is the tab. It writes to the real
+  `data/` and `metrics_data/` **in place**, behind a confirmation that names
+  every target and its current size.
+
+Two hazards absorbed here, both of which produced real bugs:
+
+- **`parse_args()` at module scope.** `03_cluster/cluster_trajectories.py` and
+  `cluster_similarity.py` used to call it at import, so importing either from
+  a process with its own command line parsed *that* argv and could
+  `SystemExit`. They take the method as a parameter now; don't put argparse
+  back at module level.
+- **pyplot off the main thread.** `gui/qt.py` forces the `QtAgg` backend, so a
+  stage that builds a figure through `pyplot` crashes when run from the worker
+  thread. `05_analysis/spearman.py` therefore builds a bare `Figure` and
+  returns it. That also keeps it working through `gui/viz/capture.py`, which
+  intercepts `Figure.savefig` - the pipeline wants the PDF written, the GUI's
+  renderer does not, and the same function serves both.
+
+After a run, call `results_root.invalidate_caches()`, **not**
+`coverage.invalidate()`: the pipeline rewrites the four tables behind
+memoised caches and the latter clears only one of them.
 
 ### Adding things
 
@@ -194,9 +270,15 @@ python -m pytest tests/
 # so it never touches the real data/outputs/metrics_data. ~13s. Deliberately
 # NOT named test_*.py so the fast suite above skips it - run it explicitly:
 python -m pytest tests/smoke_test_pipeline.py -v -s
+
+# The same tiny sweep, but driven IN PROCESS through the GUI's
+# PipelineRunner instead of subprocesses, plus one test that drives the
+# Process tab itself so a real QThread starts and its signals really cross
+# threads. Both paths must keep producing the same files.
+python -m pytest tests/smoke_test_gui_pipeline.py -v -s
 ```
 
-The smoke test is the one that catches wiring bugs (renamed modules, path changes, schema drift between steps) — the unit tests can't see those. Most of the real bugs found in this repo were caught by it, not by inspection.
+The smoke tests are the ones that catch wiring bugs (renamed modules, path changes, schema drift between steps) — the unit tests can't see those. Most of the real bugs found in this repo were caught by them, not by inspection. The GUI one earns its keep separately: every unit test of `PipelineRunner` calls `run()` on the calling thread, so only that test exercises real cross-thread signal delivery — which is how a non-serializable signal payload was found.
 
 CI (`.github/workflows/tests.yml`) byte-compiles every pipeline script and runs the fast suite on push and PR. It installs only `pandas numpy pytest` on purpose: the unit tests never reach the heavy scientific stack, and building `cocoex` (a compiled C extension) in CI would be slow and fragile. The smoke test is not run in CI.
 

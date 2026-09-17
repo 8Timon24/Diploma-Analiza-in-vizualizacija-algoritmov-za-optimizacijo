@@ -10,12 +10,16 @@ import numpy as np
 import os
 from tqdm import tqdm
 from functools import reduce
-import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import seaborn as sns
+import config
 from config import (
     METRIC_KEYS as KEYS, DIMENSIONS, MERGED_DIR, METRIC_LABELS, normalize_keys,
     METRICS_DIR as metrics_dir, FIGURES_SPEARMAN_DIR as OUTPUT_DIR,
 )
+from pipeline_api import Progress, StageResult
+
+STAGE = "spearman"
 
 # metrics to include (folder names under metrics_data/). Excludes 'merged'.
 # Edit this list to add/drop metrics.
@@ -59,21 +63,35 @@ def build_merged(dim):
 
 
 def plot_spearman(corr, dim, present, output_dir):
+    """Draw the correlation heatmap, save it, and return the Figure.
+
+    Built through the Figure API rather than pyplot: pyplot keeps global
+    state and creates a canvas on whatever backend is active, which in the
+    desktop app is QtAgg - and building a Qt canvas off the main thread
+    crashes. A bare Figure has neither problem, so the same function is safe
+    from the pipeline's worker thread and from the GUI's renderer.
+
+    It still calls savefig, which is what writes figures_spearman/; when the
+    GUI renders this for display, gui/viz/capture.py intercepts that call and
+    takes the returned Figure instead, so nothing is written.
+    """
     # rename a copy for display only - `corr` itself is written to CSV unchanged
     corr_disp = corr.rename(index=METRIC_LABELS, columns=METRIC_LABELS)
 
-    plt.figure(figsize=(10, 8))
+    figure = Figure(figsize=(10, 8), layout="constrained")
+    axes = figure.add_subplot(1, 1, 1)
     # diverging colormap centered at 0 since correlations run -1..1
     sns.heatmap(corr_disp, annot=True, fmt='.2f', cmap='coolwarm', center=0,
                 vmin=-1, vmax=1, square=True, linewidths=0.5,
-                cbar_kws={'label': 'Spearman \u03c1'})
-    plt.title(f'Spearman correlation between metrics (dimension {dim})')
-    plt.xticks(rotation=45, ha='right')
-    plt.yticks(rotation=0)
-    plt.tight_layout()
+                cbar_kws={'label': 'Spearman \u03c1'}, ax=axes)
+    axes.set_title(f'Spearman correlation between metrics (dimension {dim})')
+    axes.tick_params(axis='x', rotation=45)
+    for label in axes.get_xticklabels():
+        label.set_horizontalalignment('right')
+    axes.tick_params(axis='y', rotation=0)
     os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(f'{output_dir}/spearman_dim_{dim}.pdf', bbox_inches='tight')
-    plt.close()
+    figure.savefig(f'{output_dir}/spearman_dim_{dim}.pdf', bbox_inches='tight')
+    return figure
 
 
 def interpret(corr, present):
@@ -97,9 +115,20 @@ def interpret(corr, present):
         print(f"    {a:16s} <-> {b:16s}  rho={r:+.3f}  {band(r)}")
 
 
-if __name__ == '__main__':
-    os.makedirs(MERGED_DIR, exist_ok=True)
-    for dim in DIMENSIONS:
+def run(progress_cb=None, cancel_event=None, dimensions=None):
+    """Correlate the metrics against each other, per dimension."""
+    dims = list(dimensions if dimensions is not None else DIMENSIONS)
+    merged_dir = config.MERGED_DIR
+    figures_dir = config.FIGURES_SPEARMAN_DIR
+    progress = Progress(progress_cb, cancel_event)
+    result = StageResult(STAGE)
+
+    os.makedirs(merged_dir, exist_ok=True)
+    progress.begin(len(dims), "spearman")
+    for dim in dims:
+        if not progress.item(f"dim {dim}"):
+            result.cancelled = True
+            return result
         print(f"\n{'='*60}\nDIM {dim}\n{'='*60}")
         merged, present = build_merged(dim)
         print(f"merged shape: {merged.shape}")
@@ -110,16 +139,26 @@ if __name__ == '__main__':
         # "merge" step runs right before this one); this is only the
         # narrower inner join spearman.py itself correlates over, restricted
         # to METRICS above and to rows where every one of them is present.
-        merged.to_csv(f'{MERGED_DIR}/spearman_input_dim_{dim}.csv', index=False)
+        merged.to_csv(f'{merged_dir}/spearman_input_dim_{dim}.csv', index=False)
 
         corr = merged[present].corr(method='spearman')
-        corr.to_csv(f'{MERGED_DIR}/spearman_dim_{dim}.csv')
+        corr.to_csv(f'{merged_dir}/spearman_dim_{dim}.csv')
         print("\nSpearman matrix:")
         print(corr.round(3).to_string())
 
         interpret(corr, present)
-        plot_spearman(corr, dim, present, OUTPUT_DIR)
-        print(f"\n  saved -> {OUTPUT_DIR}/spearman_dim_{dim}.pdf")
-        print(f"  saved -> {MERGED_DIR}/spearman_input_dim_{dim}.csv, spearman_dim_{dim}.csv")
+        plot_spearman(corr, dim, present, figures_dir)
+        result.written += 3
+        print(f"\n  saved -> {figures_dir}/spearman_dim_{dim}.pdf")
+        print(f"  saved -> {merged_dir}/spearman_input_dim_{dim}.csv, spearman_dim_{dim}.csv")
 
     print("\nDONE")
+    return result
+
+
+def main():
+    run()
+
+
+if __name__ == '__main__':
+    main()

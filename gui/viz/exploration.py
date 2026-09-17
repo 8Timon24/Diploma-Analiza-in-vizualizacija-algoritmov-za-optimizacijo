@@ -58,13 +58,15 @@ def mean_exploration(params):
     axes = figure.add_subplot(1, 1, 1)
     sns.lineplot(data=means, x="iteration", y="exploration", hue="algorithm",
                  hue_order=order, palette=palette, errorbar=None, ax=axes)
-    axes.axhline(EXPLORATION_BOUNDARY, color="gray", linestyle="--", alpha=0.6)
+    # Labelled, so it reaches the legend: an unexplained dashed line across
+    # the middle of the plot told the reader nothing.
+    axes.axhline(EXPLORATION_BOUNDARY, color="gray", linestyle="--", alpha=0.6,
+                 label=f"{EXPLORATION_BOUNDARY:.0f}% - even split")
     axes.set_ylim(0, 100)
     axes.set_xlabel("Iteration")
     axes.set_ylabel("Exploration (%)")
     axes.set_title(f"Exploration over iterations ({_problem_title(params)})")
-    axes.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=7,
-                title="Algorithm")
+    axes.legend(bbox_to_anchor=(1.02, 1), loc="upper left", title="Algorithm")
     return figure
 
 
@@ -148,9 +150,12 @@ def exploration_difference_clustermap(params):
                                         fontsize=9, rotation=45, ha="right")
         grid.ax_heatmap.set_xlabel("")
         grid.ax_heatmap.set_ylabel("")
+        # Inside the layout box: at y=1.02 the title sat outside the figure
+        # and was clipped on the live canvas (bbox_inches="tight" only saved
+        # it on export).
         grid.figure.suptitle(
             f"Difference in exploration between algorithms ({_problem_title(params)})",
-            y=1.02,
+            y=0.995,
         )
         return grid.figure
 

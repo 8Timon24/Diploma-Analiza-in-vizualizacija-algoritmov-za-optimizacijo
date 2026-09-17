@@ -4,10 +4,12 @@ Families come from mealpy itself (see gui.core.optimizers), so this stays
 correct when mealpy adds optimizers - there is no hardcoded list anywhere in
 the widget.
 """
-from gui.qt import QtWidgets, Qt, Signal
+from gui.panels import layout as panel_layout
+from gui.qt import QtGui, QtWidgets, Qt, Signal
 from gui.core import optimizers as optimizers_core
 
 _NAME_ROLE = Qt.ItemDataRole.UserRole
+_FAMILY_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 class AlgorithmPicker(QtWidgets.QWidget):
@@ -23,6 +25,9 @@ class AlgorithmPicker(QtWidgets.QWidget):
 
         self.search = QtWidgets.QLineEdit(placeholderText="Filter optimizers...")
         self.search.setClearButtonEnabled(True)
+        self.search.setToolTip("Filter by name (Ctrl+F)")
+        find = QtGui.QShortcut(QtGui.QKeySequence.StandardKey.Find, self)
+        find.activated.connect(self.search.setFocus)
         self.search.textChanged.connect(self._apply_filter)
 
         self.tree = QtWidgets.QTreeWidget()
@@ -31,7 +36,7 @@ class AlgorithmPicker(QtWidgets.QWidget):
         self.tree.itemChanged.connect(self._on_item_changed)
 
         self.count_label = QtWidgets.QLabel("Loading optimizers...")
-        self.count_label.setStyleSheet("color: palette(mid);")
+        self.count_label.setProperty("class", "hint")
 
         buttons = QtWidgets.QHBoxLayout()
         for text, tip, slot in (
@@ -44,8 +49,7 @@ class AlgorithmPicker(QtWidgets.QWidget):
             buttons.addWidget(b)
         buttons.addStretch()
 
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout = panel_layout.column(self, margins=0)
         layout.addWidget(self.search)
         layout.addWidget(self.tree, 1)
         layout.addLayout(buttons)
@@ -59,25 +63,44 @@ class AlgorithmPicker(QtWidgets.QWidget):
         """Populate from a loaded registry (see optimizers_core.load_registry)."""
         self._registry = registry
         self._updating = True
-        self.tree.clear()
-        self._family_items.clear()
+        try:
+            # Drop our references BEFORE clear() deletes the C++ items, or
+            # anything that walks _family_items in between (selected_names,
+            # _sync_parent) hits already-deleted objects.
+            self._family_items.clear()
+            self.tree.clear()
 
-        for family, names in registry.by_family.items():
-            parent = QtWidgets.QTreeWidgetItem(self.tree)
-            parent.setText(0, f"{optimizers_core.family_label(family)}  ({len(names)})")
-            parent.setFlags(parent.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            parent.setCheckState(0, Qt.CheckState.Unchecked)
-            self._family_items[family] = parent
-            for name in names:
-                child = QtWidgets.QTreeWidgetItem(parent)
-                child.setText(0, name)
-                child.setData(0, _NAME_ROLE, name)
-                child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                child.setCheckState(0, Qt.CheckState.Unchecked)
+            for family, names in registry.by_family.items():
+                parent = QtWidgets.QTreeWidgetItem(self.tree)
+                parent.setData(0, _FAMILY_ROLE, family)
+                parent.setFlags(parent.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                parent.setCheckState(0, Qt.CheckState.Unchecked)
+                self._family_items[family] = parent
+                for name in names:
+                    child = QtWidgets.QTreeWidgetItem(parent)
+                    child.setText(0, name)
+                    child.setData(0, _NAME_ROLE, name)
+                    child.setFlags(child.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                    child.setCheckState(0, Qt.CheckState.Unchecked)
+                self._relabel_family(parent)
+        finally:
+            # Without this, any exception above leaves the flag set and every
+            # later click is silently ignored with nothing shown to the user.
+            self._updating = False
 
-        self._updating = False
         self.setEnabled(True)
         self.select_thesis_set()
+
+    def _relabel_family(self, parent):
+        """Header text with the count that is actually visible under it."""
+        family = parent.data(0, _FAMILY_ROLE)
+        total = parent.childCount()
+        shown = sum(not parent.child(i).isHidden() for i in range(total))
+        label = optimizers_core.family_label(family)
+        if shown == total:
+            parent.setText(0, f"{label}  ({total})")
+        else:
+            parent.setText(0, f"{label}  ({shown} of {total})")
 
     # -- selection -------------------------------------------------------
 
@@ -92,24 +115,28 @@ class AlgorithmPicker(QtWidgets.QWidget):
     def set_selected(self, names):
         wanted = set(names)
         self._updating = True
-        for parent in self._family_items.values():
-            for i in range(parent.childCount()):
-                child = parent.child(i)
-                state = (
-                    Qt.CheckState.Checked
-                    if child.data(0, _NAME_ROLE) in wanted
-                    else Qt.CheckState.Unchecked
-                )
-                child.setCheckState(0, state)
-            self._sync_parent(parent)
-        self._updating = False
+        try:
+            for parent in self._family_items.values():
+                for i in range(parent.childCount()):
+                    child = parent.child(i)
+                    state = (
+                        Qt.CheckState.Checked
+                        if child.data(0, _NAME_ROLE) in wanted
+                        else Qt.CheckState.Unchecked
+                    )
+                    child.setCheckState(0, state)
+                self._sync_parent(parent)
+        finally:
+            self._updating = False
         self._emit()
 
     def select_thesis_set(self):
         self.set_selected(optimizers_core.thesis_selection())
 
     def select_all(self):
-        self.set_selected(self._registry.names if self._registry else [])
+        if self._registry is None:
+            return  # before the registry lands this would just clear the tree
+        self.set_selected(self._registry.names)
 
     def select_none(self):
         self.set_selected([])
@@ -120,23 +147,35 @@ class AlgorithmPicker(QtWidgets.QWidget):
         if self._updating:
             return
         self._updating = True
-        if item.childCount():  # a family header: push its state down
-            for i in range(item.childCount()):
-                item.child(i).setCheckState(0, item.checkState(0))
-        elif item.parent():  # a leaf: pull the header into line
-            self._sync_parent(item.parent())
-        self._updating = False
+        try:
+            if item.parent() is None:  # a family header: push its state down
+                state = item.checkState(0)
+                for i in range(item.childCount()):
+                    child = item.child(i)
+                    # Only what the filter is showing. Pushing the header's
+                    # state onto hidden children meant ticking "Swarm" while
+                    # filtering for "DE" silently selected 50 optimizers the
+                    # user could not see.
+                    if not child.isHidden():
+                        child.setCheckState(0, state)
+                self._sync_parent(item)
+            else:  # a leaf: pull the header into line
+                self._sync_parent(item.parent())
+        finally:
+            self._updating = False
         self._emit()
 
     def _sync_parent(self, parent):
         """Set a family header to checked / unchecked / partial from its children."""
-        checked = sum(
-            parent.child(i).checkState(0) == Qt.CheckState.Checked
-            for i in range(parent.childCount())
-        )
+        visible = [parent.child(i) for i in range(parent.childCount())
+                   if not parent.child(i).isHidden()]
+        children = visible or [parent.child(i) for i in range(parent.childCount())]
+        if not children:
+            return
+        checked = sum(c.checkState(0) == Qt.CheckState.Checked for c in children)
         if checked == 0:
             state = Qt.CheckState.Unchecked
-        elif checked == parent.childCount():
+        elif checked == len(children):
             state = Qt.CheckState.Checked
         else:
             state = Qt.CheckState.PartiallyChecked
@@ -144,19 +183,37 @@ class AlgorithmPicker(QtWidgets.QWidget):
 
     def _apply_filter(self, text):
         needle = text.strip().lower()
-        for parent in self._family_items.values():
-            visible_children = 0
-            for i in range(parent.childCount()):
-                child = parent.child(i)
-                match = needle in child.data(0, _NAME_ROLE).lower()
-                child.setHidden(not match)
-                visible_children += match
-            parent.setHidden(visible_children == 0)
-            if needle:
-                parent.setExpanded(True)
+        self._updating = True
+        try:
+            for parent in self._family_items.values():
+                visible_children = 0
+                for i in range(parent.childCount()):
+                    child = parent.child(i)
+                    match = needle in child.data(0, _NAME_ROLE).lower()
+                    child.setHidden(not match)
+                    visible_children += match
+                parent.setHidden(visible_children == 0)
+                # Expanding on a search is helpful; staying expanded after it
+                # is cleared is not.
+                parent.setExpanded(bool(needle))
+                self._relabel_family(parent)
+                self._sync_parent(parent)
+        finally:
+            self._updating = False
+        self._emit()
 
     def _emit(self):
         names = self.selected_names()
         total = len(self._registry.names) if self._registry else 0
-        self.count_label.setText(f"{len(names)} of {total} optimizers selected")
+        text = f"{len(names)} of {total} optimizers selected"
+        hidden = sum(
+            1
+            for parent in self._family_items.values()
+            for i in range(parent.childCount())
+            if parent.child(i).isHidden()
+            and parent.child(i).checkState(0) == Qt.CheckState.Checked
+        )
+        if hidden:
+            text += f"  ({hidden} hidden by the filter)"
+        self.count_label.setText(text)
         self.selectionChanged.emit(names)

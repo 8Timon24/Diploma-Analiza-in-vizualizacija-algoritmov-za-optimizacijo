@@ -40,6 +40,21 @@ ALGO_PALETTE = dict(zip(
 ))
 
 
+def _palette_for(algorithms):
+    """Colours for the algorithms actually present in the data.
+
+    ALGO_PALETTE only covers the 28 in ALGORITHMS_OF_INTEREST, but the data
+    can contain others - the GUI offers every mealpy optimizer - and indexing
+    it directly raised KeyError instead of just colouring the extra ones.
+    """
+    known = [a for a in algorithms if a in ALGO_PALETTE]
+    extra = [a for a in algorithms if a not in ALGO_PALETTE]
+    palette = {a: ALGO_PALETTE[a] for a in known}
+    if extra:
+        palette.update(zip(extra, sns.color_palette("husl", n_colors=len(extra))))
+    return palette
+
+
 def _filter_algorithms(data, algorithms):
     """
     Optionally restrict a dataframe to a subset of algorithms.
@@ -61,7 +76,7 @@ def plot_entropy(data, function, instance, dimension, output_dir=None, save=Fals
     plt.figure(figsize=(10, 5))
 
     algo_order = sorted(data['algorithm'].unique())
-    palette = {a: ALGO_PALETTE[a] for a in algo_order}
+    palette = _palette_for(algo_order)
     sns.lineplot(data=data, x='iteration', y='entropy', hue='algorithm',
                  hue_order=algo_order, palette=palette, errorbar=None)
 
@@ -109,7 +124,7 @@ def plot_entropy_by_function_group(all_entropy, output_dir, function_groups, alg
     group_entropy['Function group'] = group_entropy['function_group'].map(GROUP_LABELS)
 
     algo_order = sorted(group_entropy['algorithm'].unique())
-    palette = {a: ALGO_PALETTE[a] for a in algo_order}
+    palette = _palette_for(algo_order)
 
     g = sns.FacetGrid(group_entropy, col='Function group', col_wrap=3, height=4,
                        hue='algorithm', hue_order=algo_order, palette=palette)

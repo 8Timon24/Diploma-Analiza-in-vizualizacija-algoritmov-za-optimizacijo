@@ -117,3 +117,96 @@ def test_compare_panel_builds_a_new_canvas_per_render():
         "to it; build a fresh FigureCanvasQTAgg instead"
     )
     assert "FigureCanvasQTAgg(figure)" in text
+
+
+# -- 3. the empty state must not crash the table ------------------------
+#
+# "the Data tab dies when a file will not open"
+#   DataFrameModel.__init__ guarded frame=None but set_frame() did not, and
+#   data_panel passes None on exactly two paths: nothing found under the
+#   results root, and a file that could not be read. rowCount() then did
+#   len(None) inside endResetModel().
+
+def test_set_frame_accepts_none():
+    from gui.models.dataframe_model import DataFrameModel
+
+    model = DataFrameModel(pd.DataFrame({"a": [1, 2]}))
+    model.set_frame(None)
+    assert model.rowCount() == 0
+    assert model.columnCount() == 0
+    assert model.frame.empty
+
+
+def test_sort_ignores_a_column_index_from_a_previous_file():
+    """The view keeps its sort indicator across files, so a narrower frame
+    can be asked to sort by a column that no longer exists."""
+    from gui.qt import Qt
+    from gui.models.dataframe_model import DataFrameModel
+
+    model = DataFrameModel(pd.DataFrame({"a": [3, 1], "b": [1, 2], "c": [0, 0]}))
+    model.set_frame(pd.DataFrame({"a": [3, 1]}))
+    model.sort(2, Qt.SortOrder.AscendingOrder)  # column 2 is gone
+    assert list(model.frame["a"]) == [3, 1]
+
+
+def test_sorting_is_not_cumulative_and_keeps_file_order_recoverable():
+    from gui.qt import Qt
+    from gui.models.dataframe_model import DataFrameModel
+
+    model = DataFrameModel(pd.DataFrame({"a": [2, 3, 1]}))
+    model.sort(0, Qt.SortOrder.AscendingOrder)
+    assert list(model.frame["a"]) == [1, 2, 3]
+    model.sort(0, Qt.SortOrder.DescendingOrder)
+    # Sorted from the frame as loaded, not from the already-sorted copy.
+    assert list(model.frame["a"]) == [3, 2, 1]
+
+
+def test_missing_values_of_every_dtype_render_the_same():
+    import numpy as np
+    from gui.qt import Qt
+    from gui.models.dataframe_model import DataFrameModel
+
+    frame = pd.DataFrame({
+        "f64": pd.Series([np.nan], dtype="float64"),
+        "f32": pd.Series([np.nan], dtype="float32"),
+        "time": pd.Series([pd.NaT], dtype="datetime64[ns]"),
+    })
+    model = DataFrameModel(frame)
+    shown = [
+        model.data(model.index(0, column), Qt.ItemDataRole.DisplayRole)
+        for column in range(3)
+    ]
+    assert shown == ["", "", ""], shown
+
+
+# -- 4. config.FUNCTIONS is overridable, so nothing may index it blindly --
+
+def test_trajectory_panel_builds_with_a_trimmed_function_list(monkeypatch):
+    """PIPELINE_TEST_FUNCTIONS made config.FUNCTIONS = [1, 2]; a bare
+    .index(16) then raised ValueError inside MainWindow.__init__ and the whole
+    window failed to construct."""
+    pytest.importorskip("PySide6")
+    from gui.qt import QtWidgets
+    import config as config_module
+    from gui.panels import trajectory_panel
+
+    monkeypatch.setattr(config_module, "FUNCTIONS", [1, 2])
+    monkeypatch.setattr(config_module, "INSTANCES", [1])
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = trajectory_panel.TrajectoryPanel()
+    assert panel.function.currentData() == 1
+
+
+# -- 5. a failed run must release the panel the same way a finished one does
+
+def test_run_panel_reports_a_failed_start():
+    """_on_failed used to skip runFinished and cache invalidation, so the
+    Data tab never refreshed after a run that died on startup.
+
+    invalidate_caches() rather than coverage.invalidate(): the latter clears
+    one lru_cache of four, leaving the figure views rendering pre-run numbers.
+    """
+    source = Path(__file__).resolve().parents[1] / "gui" / "panels" / "run_panel.py"
+    body = source.read_text().split("def _on_failed")[1].split("\n    def ")[0]
+    assert "runFinished.emit" in body
+    assert "results_root.invalidate_caches()" in body

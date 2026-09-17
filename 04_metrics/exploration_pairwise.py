@@ -9,10 +9,14 @@ import numpy as np
 import pandas as pd
 import os
 from itertools import combinations
+import config
 from config import (
     ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES, SEEDS as RUNS,
     OUTPUTS_DIR as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
 )
+from pipeline_api import Progress, StageResult
+
+STAGE = "exploration_pairwise"
 
 
 def load_exploration(d, alg, f, i, seed):
@@ -22,22 +26,37 @@ def load_exploration(d, alg, f, i, seed):
     exploration+exploitation sum to 100, so |expl diff| == |exploit diff|;
     one column suffices for both.
     """
-    path = f"{INPUT_DIR}/dim_{d}/{alg}/{f}_{i}/diversity_{seed}.csv"
+    path = f"{config.OUTPUTS_DIR}/dim_{d}/{alg}/{f}_{i}/diversity_{seed}.csv"
     if not os.path.isfile(path):
         return None
     df = pd.read_csv(path).sort_values('iteration')
     return df['exploration'].to_numpy()
 
 
-if __name__ == "__main__":
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+def run(progress_cb=None, cancel_event=None, dimensions=None):
+    """Pairwise difference in exploration/exploitation balance.
+
+    Needs the benchmark to have been run with -e (save_diversity); a missing
+    diversity file for an algorithm simply drops that pair.
+    """
+    dims = list(dimensions if dimensions is not None else DIMENSIONS)
+    output_dir = config.METRICS_DIR
+    progress = Progress(progress_cb, cancel_event)
+    result = StageResult(STAGE)
+
+    os.makedirs(output_dir, exist_ok=True)
     algorithm_pairs = list(combinations(sorted(ALGORITHMS_OF_INTEREST), 2))
 
-    for d in DIMENSIONS:
-        os.makedirs(f'{OUTPUT_DIR}/exploration/dim_{d}', exist_ok=True)
+    for d in dims:
+        os.makedirs(f'{output_dir}/exploration/dim_{d}', exist_ok=True)
+        progress.begin(len(FUNCTIONS) * len(INSTANCES), f"exploration dim {d}")
 
         for f in FUNCTIONS:
+            if progress.cancelled:
+                break
             for i in INSTANCES:
+                if not progress.item(f"F{f}_I{i}"):
+                    break
                 rows = []  # (Alg1, Alg2, F, I) run_id, mean_exploration_difference
 
                 for r in RUNS:
@@ -63,5 +82,20 @@ if __name__ == "__main__":
                                "Mean_exploration_difference": diff}
                         rows.append(row)
 
-                result = pd.DataFrame(rows)
-                result.to_csv(f'{OUTPUT_DIR}/exploration/dim_{d}/F{f}_I{i}.csv', index=False)
+                result_frame = pd.DataFrame(rows)
+                result_frame.to_csv(f'{output_dir}/exploration/dim_{d}/F{f}_I{i}.csv', index=False)
+                result.written += 1
+
+        if progress.cancelled:
+            result.cancelled = True
+            return result
+
+    return result
+
+
+def main():
+    run()
+
+
+if __name__ == "__main__":
+    main()

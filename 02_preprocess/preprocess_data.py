@@ -6,21 +6,45 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pandas as pd
 import os
-from config import DIMENSIONS as dimensions, OUTPUTS_DIR as base, PROCESSED_DIR
+import config
+from config import DIMENSIONS as dimensions, SEEDS
+from pipeline_api import Progress, StageResult
 
-if __name__ == "__main__":
-    for d in dimensions:
+STAGE = "preprocess"
+
+
+def run(progress_cb=None, cancel_event=None, dimensions_=None):
+    """Reshape the raw population trajectories into the clustering input.
+
+    Memory note: one dimension's frames are concatenated in one go, which is
+    the heaviest allocation in the pipeline. Kept as-is deliberately - the
+    concat is what gives the groupby below a single pass per problem.
+    """
+    dims = list(dimensions_ if dimensions_ is not None else dimensions)
+    base = config.OUTPUTS_DIR
+    processed_dir = config.PROCESSED_DIR
+    progress = Progress(progress_cb, cancel_event)
+    result_stage = StageResult(STAGE)
+
+    for d in dims:
 
         frames = []
         base_d = f'{base}/dim_{d}'
 
-        for algorithm in os.listdir(base_d):
-            if not os.path.isdir(f'{base_d}/{algorithm}'):
-                    continue
+        algorithms = [a for a in os.listdir(base_d)
+                      if os.path.isdir(f'{base_d}/{a}')]
+        progress.begin(len(algorithms), f"preprocessing dim {d}")
+
+        for algorithm in algorithms:
+            if not progress.item(algorithm):
+                result_stage.cancelled = True
+                return result_stage
             print(f'Preprocessing algorithm {algorithm} in dimension {d}')
             for problem_folder in os.listdir(f'{base_d}/{algorithm}'):
                 problem_id, instance_id = problem_folder.split('_')
-                for seed in [1, 2, 3, 4, 5]:
+                # config.SEEDS rather than a literal [1..5]: the sweep is
+                # configurable and the smoke test runs a single seed.
+                for seed in SEEDS:
                     path = f'{base_d}/{algorithm}/{problem_folder}/trajectory_{seed}.csv'
                     if not os.path.isfile(path):
                         continue
@@ -34,14 +58,30 @@ if __name__ == "__main__":
                     df['instance_id'] = int(instance_id)
                     frames.append(df)
 
+        if not frames:
+            result_stage.notes.append(f"dim {d}: no population trajectories")
+            continue
 
         result = pd.concat(frames, ignore_index=True)
-        os.makedirs(f'{PROCESSED_DIR}/dim_{d}', exist_ok=True)
+        os.makedirs(f'{processed_dir}/dim_{d}', exist_ok=True)
 
         for (pid, iid), group in result.groupby(['problem_id', 'instance_id']):  # adjust col names as needed
-            group.to_csv(f'{PROCESSED_DIR}/dim_{d}/F{pid}_I{iid}.csv', compression='zip')
+            group.to_csv(f'{processed_dir}/dim_{d}/F{pid}_I{iid}.csv', compression='zip')
+            result_stage.written += 1
 
-
-    for d in dimensions:
-        sample = pd.read_csv(f'{PROCESSED_DIR}/dim_{d}/F1_I1.csv', compression='zip', index_col=0)
+    for d in dims:
+        sample_path = f'{processed_dir}/dim_{d}/F1_I1.csv'
+        if not os.path.isfile(sample_path):
+            continue
+        sample = pd.read_csv(sample_path, compression='zip', index_col=0)
         print(f'dim {d}:', sample.shape, sample.columns.tolist())
+
+    return result_stage
+
+
+def main():
+    run()
+
+
+if __name__ == "__main__":
+    main()

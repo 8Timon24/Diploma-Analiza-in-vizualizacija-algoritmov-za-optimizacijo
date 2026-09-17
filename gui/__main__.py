@@ -2,6 +2,7 @@
 import sys
 
 from gui.qt import QtWidgets
+from gui import theme
 from gui.main_window import MainWindow, APP_NAME
 
 
@@ -17,6 +18,9 @@ def main(argv=None):
 
     app = QtWidgets.QApplication(argv)
     app.setApplicationName(APP_NAME)
+    app.setApplicationDisplayName(APP_NAME)
+    app.setOrganizationName("OptimizerTrajectoryExplorer")
+    theme.apply(app)
     window = MainWindow()
     window.show()
     return app.exec()

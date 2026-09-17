@@ -8,10 +8,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 import math
 import os
+import config
 from config import (
     ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES,
     CLUSTER_DISTRIBUTIONS_LATEST as INPUT_DIR, ENTROPY_DATA_DIR,
 )
+from pipeline_api import Progress, StageResult
+
+STAGE = "entropy_calc"
 
 def compute_entropy(filepath, algorithms_of_interest=None):
     """
@@ -43,7 +47,8 @@ def compute_entropy(filepath, algorithms_of_interest=None):
     return pd.DataFrame(rows)
 
 
-def get_granular_entropy(input_dir, functions, instances, dimension, algorithms_of_interest=None):
+def get_granular_entropy(input_dir, functions, instances, dimension,
+                         algorithms_of_interest=None, progress=None):
     """
     Collects FULLY LOSSLESS per-iteration entropy across all
     (function, instance) files for one dimension - nothing averaged away.
@@ -55,7 +60,11 @@ def get_granular_entropy(input_dir, functions, instances, dimension, algorithms_
 
     all_rows = []
     for F in functions:
+        if progress is not None and progress.cancelled:
+            break  # the inner break below only leaves the instance loop
         for I in instances:
+            if progress is not None and not progress.item(f"F{F}_I{I}"):
+                break
             problem_entropy = compute_entropy(f'{input_dir}/F{F}_I{I}.csv', algorithms_of_interest)
             if problem_entropy.empty:
                 continue
@@ -132,23 +141,46 @@ def aggregate_from_granular(granular):
     return per_problem[['algorithm', 'iteration', 'function_class', 'mean_entropy']]
 
 
-if __name__ == '__main__':
-    os.makedirs(ENTROPY_DATA_DIR, exist_ok=True)
+def run(progress_cb=None, cancel_event=None, dimensions=None):
+    """Compute the granular and aggregated entropy tables per dimension."""
+    dims = list(dimensions if dimensions is not None else DIMENSIONS)
+    entropy_dir = config.ENTROPY_DATA_DIR
+    progress = Progress(progress_cb, cancel_event)
+    result = StageResult(STAGE)
 
-    for d in DIMENSIONS:
-        input_dir = f'{INPUT_DIR}/dim_{d}'
+    os.makedirs(entropy_dir, exist_ok=True)
+
+    for d in dims:
+        input_dir = f'{config.CLUSTER_DISTRIBUTIONS_LATEST}/dim_{d}'
         print(f"Computing entropy for dim={d}...")
+        progress.begin(len(FUNCTIONS) * len(INSTANCES), f"entropy dim {d}")
         # Fully lossless per-iteration table (one row per algorithm/problem/
         # instance/dimension/run/iteration). Base table for any later
         # aggregation or pairwise analysis.
-        granular = get_granular_entropy(input_dir, FUNCTIONS, INSTANCES, d, ALGORITHMS_OF_INTEREST)
-        granular_path = f'{ENTROPY_DATA_DIR}/entropy_granular_dim_{d}.csv'
+        granular = get_granular_entropy(input_dir, FUNCTIONS, INSTANCES, d,
+                                        ALGORITHMS_OF_INTEREST, progress=progress)
+        if progress.cancelled:
+            result.cancelled = True
+            return result
+        granular_path = f'{entropy_dir}/entropy_granular_dim_{d}.csv'
         granular.to_csv(granular_path, index=False)
+        result.written += 1
         print(f"  saved granular -> {granular_path}  ({len(granular)} rows)")
         # Aggregated table (averaged across runs then instances) - what the
         # current plots consume. Derived from the granular table in memory
         # rather than re-scanning every raw file a second time.
         all_entropy = aggregate_from_granular(granular)
-        out_path = f'{ENTROPY_DATA_DIR}/entropy_dim_{d}.csv'
+        out_path = f'{entropy_dir}/entropy_dim_{d}.csv'
         all_entropy.to_csv(out_path, index=False)
+        result.written += 1
         print(f"  saved aggregated -> {out_path}  ({len(all_entropy)} rows)")
+
+    return result
+
+
+def main():
+    run()
+
+
+if __name__ == '__main__':
+    main()

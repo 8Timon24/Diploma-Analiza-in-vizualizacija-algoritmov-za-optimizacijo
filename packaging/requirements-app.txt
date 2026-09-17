@@ -1,0 +1,29 @@
+# Runtime dependencies of the desktop app, for the packaged build.
+#
+# Deliberately NOT requirements.txt: that file is a full `pip freeze` of the
+# development venv on Linux, which pins build-only and platform-specific
+# packages that either do not exist or are not wanted on a Windows build
+# runner. This is the smaller set the GUI actually imports.
+#
+# Versions are pinned to what the app was built and verified against.
+# cocoex is published as `coco-experiment`, which ships cp39-cp312
+# win_amd64 wheels - hence the Python 3.10 pin in the build workflow.
+
+PySide6==6.11.2
+mealpy==3.0.3
+coco-experiment==2.8.2
+opfunu==1.0.4
+
+numpy==2.2.6
+pandas==2.3.3
+scipy==1.15.3
+scikit-learn==1.7.2
+matplotlib==3.10.8
+seaborn==0.13.2
+
+# Parquet reader for data/clustering_latest/clustering_results/*.parquet.
+# fastparquet rather than pyarrow: it reads the same files and is ~137 MB
+# smaller in the bundle (see packaging/gui.spec).
+fastparquet==2026.3.0
+
+pyinstaller==6.22.3

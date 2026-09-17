@@ -1,5 +1,6 @@
 about-time==4.2.1
 alive-progress==3.3.0
+altgraph==0.17.5
 asttokens==3.0.1
 autograd==1.8.0
 certifi==2026.2.25
@@ -53,11 +54,16 @@ pure_eval==0.2.3
 pyarrow==24.0.0
 pycparser==3.0
 Pygments==2.20.0
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.7
 pymoo==0.6.1.6
 pyparsing==3.3.2
 PyQt6==6.11.0
 PyQt6-Qt6==6.11.1
 PyQt6_sip==13.11.1
+PySide6==6.11.2
+PySide6_Addons==6.11.2
+PySide6_Essentials==6.11.2
 pytest==9.1.1
 python-dateutil==2.9.0.post0
 pytz==2026.1.post1
@@ -66,6 +72,7 @@ requests==2.33.1
 scikit-learn==1.7.2
 scipy==1.15.3
 seaborn==0.13.2
+shiboken6==6.11.2
 six==1.17.0
 stack-data==0.6.3
 threadpoolctl==3.6.0

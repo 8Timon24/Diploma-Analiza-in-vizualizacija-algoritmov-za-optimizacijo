@@ -9,19 +9,35 @@ import numpy as np
 import pandas as pd
 import os
 from itertools import combinations
+import config
 from config import (
     ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES, SEEDS as RUNS,
     ENTROPY_DATA_DIR as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
 )
+from pipeline_api import Progress, StageResult
 
-if __name__ == "__main__":
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+STAGE = "entropy_pairwise"
+
+def run(progress_cb=None, cancel_event=None, dimensions=None):
+    """Mean absolute per-iteration entropy difference for every algorithm pair."""
+    dims = list(dimensions if dimensions is not None else DIMENSIONS)
+    input_dir = config.ENTROPY_DATA_DIR
+    output_dir = config.METRICS_DIR
+    progress = Progress(progress_cb, cancel_event)
+    result = StageResult(STAGE)
+
+    os.makedirs(output_dir, exist_ok=True)
     algorithm_pairs = list(combinations(sorted(ALGORITHMS_OF_INTEREST), 2))
 
-    for d in DIMENSIONS:
-        os.makedirs(f'{OUTPUT_DIR}/entropy/dim_{d}', exist_ok=True)
-        df = pd.read_csv(f'{INPUT_DIR}/entropy_granular_dim_{d}.csv')
-        for (f, i), tmp in df.groupby(['problem_id', 'instance_id']):
+    for d in dims:
+        os.makedirs(f'{output_dir}/entropy/dim_{d}', exist_ok=True)
+        df = pd.read_csv(f'{input_dir}/entropy_granular_dim_{d}.csv')
+        groups = list(df.groupby(['problem_id', 'instance_id']))
+        progress.begin(len(groups), f"entropy pairs dim {d}")
+        for (f, i), tmp in groups:
+            if not progress.item(f"F{f}_I{i}"):
+                result.cancelled = True
+                return result
             rows = []  # (Alg1, Alg2, F, I) run_id, mean_entropy_diff
             for r in RUNS:
                 run_data = tmp[tmp['run'] == r]
@@ -33,5 +49,16 @@ if __name__ == "__main__":
                     res = np.abs(a1-a2).mean()
                     row = {"Algorithm1": alg1, "Algorithm2":alg2, "Function_id": f, "Instance_id": i, "Run_id": r, "Mean_entropy_difference": res}
                     rows.append(row)
-            result = pd.DataFrame(rows)
-            result.to_csv(f'{OUTPUT_DIR}/entropy/dim_{d}/F{f}_I{i}.csv', index=False)
+            result_frame = pd.DataFrame(rows)
+            result_frame.to_csv(f'{output_dir}/entropy/dim_{d}/F{f}_I{i}.csv', index=False)
+            result.written += 1
+
+    return result
+
+
+def main():
+    run()
+
+
+if __name__ == "__main__":
+    main()

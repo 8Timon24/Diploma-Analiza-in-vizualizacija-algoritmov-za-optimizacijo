@@ -164,12 +164,12 @@ def final_positions(params):
                      edgecolor="white", linewidth=0.6, label=algorithm)
     axes.scatter(x_opt[0], x_opt[1], marker="*", s=420, color="red",
                  edgecolor="black", linewidth=0.6, zorder=5, label="true optimum")
-    axes.set_xlabel(coordinates[0])
-    axes.set_ylabel(coordinates[1])
+    # The raw dataframe column names are "x1"/"x2"; say what they are.
+    axes.set_xlabel(f"{coordinates[0]}  (search space)")
+    axes.set_ylabel(f"{coordinates[1]}  (search space)")
     axes.set_title(
         f"Final best solutions in the search space ({_problem_title(params)})"
         f"\nf* = {f_opt:.6g} at ({x_opt[0]:.4g}, {x_opt[1]:.4g})"
     )
-    axes.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
-    axes.grid(alpha=0.25)
+    axes.legend(bbox_to_anchor=(1.02, 1), loc="upper left")
     return figure

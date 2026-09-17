@@ -7,12 +7,14 @@ jumping from a missing-data prompt to the run form that would fill it.
 """
 from pathlib import Path
 
-from gui.qt import QtCore, QtWidgets, Qt, Signal
+from gui.qt import QtCore, QtGui, QtWidgets, Qt, Signal
+from gui import theme
 from gui.core import optimizers as optimizers_core
 from gui.core import results_root
 from gui.core import workspace as workspace_core
 from gui.panels.setup_panel import SetupPanel
 from gui.panels.run_panel import RunPanel
+from gui.panels.pipeline_panel import PipelinePanel
 from gui.panels.viz_panel import VizPanel
 from gui.panels.trajectory_panel import TrajectoryPanel
 from gui.panels.compare_panel import ComparePanel
@@ -22,7 +24,8 @@ import config
 
 APP_NAME = "Optimizer Trajectory Explorer"
 
-SETUP_TAB, RUN_TAB, VIZ_TAB, TRAJECTORY_TAB, COMPARE_TAB, DATA_TAB = range(6)
+(SETUP_TAB, RUN_TAB, PROCESS_TAB, VIZ_TAB, TRAJECTORY_TAB,
+ COMPARE_TAB, DATA_TAB) = range(7)
 
 
 class RegistryLoader(QtCore.QThread):
@@ -41,6 +44,9 @@ class RegistryLoader(QtCore.QThread):
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
+        # Also applied by __main__, but the self-test and any embedding code
+        # build the window against their own QApplication.
+        theme.apply()
         self.setWindowTitle(APP_NAME)
         self.resize(1300, 860)
 
@@ -48,20 +54,38 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setup_panel.runRequested.connect(self._start_run)
         self.run_panel = RunPanel()
         self.run_panel.runFinished.connect(self._on_run_finished)
+        self.pipeline_panel = PipelinePanel()
+        self.pipeline_panel.pipelineFinished.connect(self._on_pipeline_finished)
         self.viz_panel = VizPanel()
         self.viz_panel.generateRequested.connect(self._prefill_run)
+        self.viz_panel.processRequested.connect(self._prefill_pipeline)
         self.trajectory_panel = TrajectoryPanel()
         self.compare_panel = ComparePanel()
         self.data_panel = DataPanel()
 
         self.tabs = QtWidgets.QTabWidget()
-        self.tabs.addTab(self.setup_panel, "Setup")
-        self.tabs.addTab(self.run_panel, "Run")
-        self.tabs.addTab(self.viz_panel, "Visualize")
-        self.tabs.addTab(self.trajectory_panel, "Trajectory")
-        self.tabs.addTab(self.compare_panel, "Compare")
-        self.tabs.addTab(self.data_panel, "Data")
-        self.setCentralWidget(self.tabs)
+        self.tabs.setDocumentMode(True)
+        for panel, label, tip in (
+            (self.setup_panel, "Setup", "Choose what to run and see what it costs"),
+            (self.run_panel, "Run", "Watch a sweep: progress, live convergence, log"),
+            (self.pipeline_panel, "Process",
+             "Cluster the trajectories and compute every metric"),
+            (self.viz_panel, "Visualize", "Render any figure from the computed metrics"),
+            (self.trajectory_panel, "Trajectory", "Animate a 2-D search in the real space"),
+            (self.compare_panel, "Compare", "Two algorithms, every metric, side by side"),
+            (self.data_panel, "Data", "Browse and export any file the pipeline wrote"),
+        ):
+            index = self.tabs.addTab(panel, label)
+            self.tabs.setTabToolTip(index, tip)
+
+        # The tab widget sat flush against the window frame on all four sides.
+        host = QtWidgets.QWidget()
+        host_layout = QtWidgets.QVBoxLayout(host)
+        host_layout.setContentsMargins(theme.SPACE_M, theme.SPACE_S,
+                                       theme.SPACE_M, theme.SPACE_S)
+        host_layout.addWidget(self.tabs)
+        self.setCentralWidget(host)
+        self._add_tab_shortcuts()
 
         self.data_panel.changeRootRequested.connect(self.choose_results_folder)
         self._build_menu()
@@ -75,6 +99,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self._loader.start()
 
     # -- results folder --------------------------------------------------
+
+    def _add_tab_shortcuts(self):
+        """Ctrl+<n> to reach the nth tab. There were no shortcuts in the app
+        at all beyond Ctrl+O and Ctrl+Q."""
+        for index in range(self.tabs.count()):
+            shortcut = QtGui.QShortcut(
+                QtGui.QKeySequence(f"Ctrl+{index + 1}"), self
+            )
+            shortcut.activated.connect(
+                lambda checked=False, i=index: self.tabs.setCurrentIndex(i)
+            )
 
     def _build_menu(self):
         menu = self.menuBar().addMenu("&File")
@@ -196,6 +231,16 @@ class MainWindow(QtWidgets.QMainWindow):
             8000,
         )
 
+    def _prefill_pipeline(self, stage_names):
+        """From "this has not been computed yet" to the stages that would."""
+        self.pipeline_panel.select_stages(stage_names)
+        self.tabs.setCurrentIndex(PROCESS_TAB)
+        self.statusBar().showMessage(
+            "Process tab set to the stages that would produce the missing "
+            "data. Review what it overwrites, then Run.",
+            8000,
+        )
+
     def _start_run(self, spec, write_to_real_outputs):
         if self.run_panel.is_running:
             QtWidgets.QMessageBox.information(
@@ -230,26 +275,68 @@ class MainWindow(QtWidgets.QMainWindow):
             15000,
         )
 
+    def _on_pipeline_finished(self, summary):
+        # The pipeline rewrites the tables the visualizations read, so the
+        # catalog's availability and the data browser are both stale now.
+        self.viz_panel.refresh()
+        self.data_panel.refresh()
+        if summary.get("error"):
+            self.statusBar().showMessage("Pipeline failed - see the Process tab", 15000)
+            return
+        state = "cancelled" if summary.get("cancelled") else "finished"
+        self.statusBar().showMessage(
+            f"Pipeline {state}: {len(summary.get('stages', []))} stage(s), "
+            f"{summary.get('written', 0):,} file(s) written",
+            15000,
+        )
+
     # -- shutdown --------------------------------------------------------
 
+    def _busy_panel(self):
+        """The panel running a background job, if any.
+
+        Both of them own a QThread that must not be destroyed underneath it,
+        so closing has to account for either being active.
+        """
+        for panel in (self.run_panel, self.pipeline_panel):
+            if panel.is_running:
+                return panel
+        return None
+
     def closeEvent(self, event):
-        """Don't let a sweep be killed mid-write by closing the window."""
-        if not self.run_panel.is_running:
+        """Don't let a job be killed mid-write by closing the window."""
+        panel = self._busy_panel()
+        if panel is None:
             event.accept()
             return
         answer = QtWidgets.QMessageBox.question(
             self,
             APP_NAME,
-            "A benchmark run is still in progress.\n\n"
-            "Quitting now stops it at the next run boundary and leaves "
+            f"A {panel.job_noun} is still in progress.\n\n"
+            "Quitting now stops it at the next boundary and leaves "
             "partial results on disk. Quit anyway?",
             QtWidgets.QMessageBox.StandardButton.Yes
             | QtWidgets.QMessageBox.StandardButton.Cancel,
             QtWidgets.QMessageBox.StandardButton.Cancel,
         )
-        if answer == QtWidgets.QMessageBox.StandardButton.Yes:
-            self.run_panel._cancel()
-            self.run_panel._runner and self.run_panel._runner.wait(10000)
-            event.accept()
-        else:
+        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
             event.ignore()
+            return
+
+        self.statusBar().showMessage("Stopping at the next boundary...")
+        panel.request_cancel()
+        if panel.wait_for_exit(10000):
+            event.accept()
+            return
+
+        # Accepting here would destroy the panel while its QThread child is
+        # still running, which Qt turns into "QThread: Destroyed while thread
+        # is still running" and an abort. Keep the window open instead and let
+        # the user decide again once the current item ends.
+        QtWidgets.QMessageBox.information(
+            self, APP_NAME,
+            f"The {panel.job_noun} has not stopped yet.\n\n"
+            "It finishes the item it is working on first. The window will "
+            "stay open until then - try closing it again in a moment.",
+        )
+        event.ignore()

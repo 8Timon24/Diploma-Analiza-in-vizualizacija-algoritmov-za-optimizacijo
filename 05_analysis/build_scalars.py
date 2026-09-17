@@ -13,10 +13,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import os
 import pandas as pd
 from tqdm import tqdm
+import config
 from config import (
     ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES, SEEDS,
     ENTROPY_DATA_DIR, OUTPUTS_DIR, METRICS_DIR, SCALARS_CSV,
 )
+from pipeline_api import Progress, StageResult
+
+STAGE = "build_scalars"
 
 
 def entropy_scalars(dimension):
@@ -61,7 +65,7 @@ def diversity_scalars(dimension):
               for i in INSTANCES
               for s in SEEDS]
     for alg, f, i, s in tqdm(combos, desc=f"diversity/dim_{dimension}", leave=False):
-        path = f"{OUTPUTS_DIR}/dim_{dimension}/{alg}/{f}_{i}/diversity_{s}.csv"
+        path = f"{config.OUTPUTS_DIR}/dim_{dimension}/{alg}/{f}_{i}/diversity_{s}.csv"
         if not os.path.isfile(path):
             continue
         d = pd.read_csv(path)
@@ -96,19 +100,48 @@ def build_dimension(dimension):
     return table.sort_values(["dim", "func", "algo"]).reset_index(drop=True)
 
 
-if __name__ == "__main__":
+def run(progress_cb=None, cancel_event=None, dimensions=None):
+    """Build the per-algorithm scalar table scalar_regression.py consumes.
+
+    A different shape from everything else in metrics_data/, which is pairwise:
+    one row per (dim, func, algo).
+    """
+    dims = list(dimensions if dimensions is not None else DIMENSIONS)
+    progress = Progress(progress_cb, cancel_event)
+    result = StageResult(STAGE)
+
     tables = []
-    for d in DIMENSIONS:
+    progress.begin(len(dims), "building scalars")
+    for d in dims:
+        if not progress.item(f"dim {d}"):
+            result.cancelled = True
+            return result
         print(f"Building scalars for dim={d}...")
         t = build_dimension(d)
         if t is not None:
             tables.append(t)
 
     if not tables:
-        raise SystemExit("no scalars could be built - is the pipeline data present?")
+        # Returned, not raised: a SystemExit here would tear down the caller,
+        # which in the desktop app is a worker thread.
+        result.notes.append("no scalars could be built - is the pipeline data present?")
+        return result
 
     scalars = pd.concat(tables, ignore_index=True)
-    os.makedirs(METRICS_DIR, exist_ok=True)
-    scalars.to_csv(SCALARS_CSV, index=False)
-    print(f"\nsaved -> {SCALARS_CSV}  ({len(scalars)} rows, "
+    os.makedirs(config.METRICS_DIR, exist_ok=True)
+    scalars.to_csv(config.SCALARS_CSV, index=False)
+    result.written += 1
+    result.notes.append(f"{len(scalars):,} rows")
+    print(f"\nsaved -> {config.SCALARS_CSV}  ({len(scalars)} rows, "
           f"columns: {list(scalars.columns)})")
+    return result
+
+
+def main():
+    result = run()
+    if not result.written:
+        raise SystemExit("  ".join(result.notes) or "nothing was written")
+
+
+if __name__ == "__main__":
+    main()

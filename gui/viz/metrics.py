@@ -16,7 +16,7 @@ from matplotlib.patches import Patch
 from scipy.cluster.hierarchy import dendrogram, linkage
 from scipy.spatial.distance import squareform
 
-from gui.viz import style
+from gui.viz import figure_theme, style
 from gui.viz.data import load_merged, pair_means
 
 METRICS = ["entropy", "cosine", "cosine_columns", "exploration", "location", "fitness"]
@@ -182,6 +182,7 @@ def metric_added_value(params):
     axes_list = np.atleast_1d(figure.subplots(2, 2)).flatten()
     labels = _labels()
 
+    meshes = []
     for axes, (row, kind) in zip(axes_list, chosen):
         first, second = row["Algorithm1"], row["Algorithm2"]
         columns, names = [], []
@@ -208,8 +209,13 @@ def metric_added_value(params):
             np.column_stack(columns),
             index=[labels[m] for m in available], columns=names,
         )
-        sns.heatmap(table, ax=axes, cmap="Blues", vmin=0, vmax=1, annot=True,
-                    fmt=".2f", linewidths=1.5, linecolor="white", cbar=False)
+        # One shared colorbar for all four cards, added to the figure below.
+        # cbar=False on its own left the shading undocumented; a per-card bar
+        # squeezed itself between the columns.
+        mesh = sns.heatmap(table, ax=axes, cmap=figure_theme.SEQUENTIAL_ALT,
+                           vmin=0, vmax=1, annot=True, fmt=".2f",
+                           linewidths=1.5, cbar=False)
+        meshes.append(mesh.collections[0])
         colour = "#2a9d8f" if kind == "most similar" else "#e63946"
         axes.set_title(
             f"{first}  vs  {second}\n{kind} by {labels[REFERENCE_METRIC].lower()} "
@@ -220,10 +226,14 @@ def metric_added_value(params):
         axes.set_ylabel("")
         axes.tick_params(axis="y", rotation=0, labelsize=9)
 
+    if meshes:
+        bar = figure.colorbar(meshes[0], ax=axes_list.tolist(), fraction=0.03,
+                              pad=0.02)
+        bar.set_label("rank against all selected pairs\n"
+                      "0 = most similar    1 = most different")
+
     figure.suptitle(
         f"What the other metrics say about the reference metric's extremes "
-        f"(dim {dimension})\n0 = most similar pair, 1 = most different, "
-        f"ranked across all selected pairs",
-        fontsize=12,
+        f"(dim {dimension})",
     )
     return figure

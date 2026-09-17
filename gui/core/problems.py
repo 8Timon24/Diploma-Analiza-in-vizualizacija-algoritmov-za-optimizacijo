@@ -303,7 +303,7 @@ class BBOBSource(ProblemSource):
         return len(list(function_ids)) * len(list(instances)) * len(list(dimensions))
 
 
-class _OpfunuSourceBase(ProblemSource):
+class OpfunuSourceBase(ProblemSource):
     supports_instances = False
 
     # Building a catalog instantiates every function in the source (~0.15s for
@@ -373,7 +373,12 @@ class _OpfunuSourceBase(ProblemSource):
         }
 
 
-class OpfunuSource(_OpfunuSourceBase):
+# Kept as an alias: this base is referenced from the panels and from
+# results_root's cache invalidation, which is not a private use.
+_OpfunuSourceBase = OpfunuSourceBase
+
+
+class OpfunuSource(OpfunuSourceBase):
     key = OPFUNU_KEY
     label = "opfunu (classic functions)"
     description = (
@@ -385,7 +390,7 @@ class OpfunuSource(_OpfunuSourceBase):
         return _name_based_classes()
 
 
-class CECSource(_OpfunuSourceBase):
+class CECSource(OpfunuSourceBase):
     key = CEC_KEY
     label = "CEC competition suites"
     description = "The CEC competition benchmark suites, by year."

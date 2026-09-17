@@ -6,6 +6,7 @@ run_benchmarks writes by algorithm and problem id - so pointing a run at the
 repo's real outputs/ can overwrite existing trajectories in place. Sandbox is
 the default and switching away from it requires confirming.
 """
+from gui.panels import layout as panel_layout
 from gui.qt import QtWidgets, Qt, Signal
 from gui.core import coverage as coverage_core
 from gui.core import problems as problems_core
@@ -15,6 +16,19 @@ from gui.panels.algorithm_picker import AlgorithmPicker
 from gui.panels.widgets import CheckableList
 
 import config
+
+
+# Estimated seconds past which a run is announced up front and confirmed.
+LONG_RUN_SECONDS = 600
+
+
+def _with_note(widget, note):
+    """Stack a control and its explanation into one form field."""
+    host = QtWidgets.QWidget()
+    inner = panel_layout.column(host, margins=0, spacing=2)
+    inner.addWidget(widget)
+    inner.addWidget(note)
+    return host
 
 
 class SetupPanel(QtWidgets.QWidget):
@@ -30,9 +44,8 @@ class SetupPanel(QtWidgets.QWidget):
 
         optimizers_box = QtWidgets.QGroupBox("Optimizers")
         QtWidgets.QVBoxLayout(optimizers_box).addWidget(self.picker)
-        optimizers_box.setMinimumWidth(320)
 
-        right = QtWidgets.QVBoxLayout()
+        right = panel_layout.column(margins=(0, 0, panel_layout.S, 0))
         right.addWidget(self._build_problem_box())
         right.addWidget(self._build_parameter_box())
         right.addWidget(self._build_output_box())
@@ -45,13 +58,18 @@ class SetupPanel(QtWidgets.QWidget):
         scroll.setWidget(right_host)
         scroll.setWidgetResizable(True)
 
+        # Proportions, not pixel caps: a hard setMaximumWidth made the
+        # splitter handle look broken - it dragged and the pane refused
+        # to grow.
         splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(optimizers_box)
         splitter.addWidget(scroll)
+        splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
+        splitter.setSizes([360, 940])
+        splitter.setChildrenCollapsible(False)
 
-        layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout = panel_layout.column(self)
         layout.addWidget(splitter)
 
         # Only now that every widget exists: _on_source_changed populates the
@@ -63,7 +81,7 @@ class SetupPanel(QtWidgets.QWidget):
 
     def _build_problem_box(self):
         box = QtWidgets.QGroupBox("Benchmark problems")
-        form = QtWidgets.QFormLayout(box)
+        form = panel_layout.form(box)
 
         self.source_combo = QtWidgets.QComboBox()
         self.source_combo.addItem("BBOB (COCO) - 24 functions, 5 instances",
@@ -81,38 +99,38 @@ class SetupPanel(QtWidgets.QWidget):
 
         self.source_note = QtWidgets.QLabel()
         self.source_note.setWordWrap(True)
-        self.source_note.setStyleSheet("color: palette(mid);")
+        self.source_note.setProperty("class", "hint")
 
         self.functions = CheckableList(list(config.FUNCTIONS), [1, 2])
         self.function_note = QtWidgets.QLabel()
         self.function_note.setWordWrap(True)
-        self.function_note.setStyleSheet("color: palette(mid); font-size: 11px;")
+        self.function_note.setProperty("class", "hint")
 
-        self.instances = CheckableList(list(config.INSTANCES), [1], height=110)
+        self.instances = CheckableList(list(config.INSTANCES), [1], rows=5)
         self.instance_note = QtWidgets.QLabel()
         self.instance_note.setWordWrap(True)
-        self.instance_note.setStyleSheet("color: palette(mid); font-size: 11px;")
-        self.dimensions = CheckableList(coverage_core.BENCHMARK_DIMENSIONS, [2], height=90)
-        self.seeds = CheckableList(list(config.SEEDS), [1], height=90)
+        self.instance_note.setProperty("class", "hint")
+        self.dimensions = CheckableList(coverage_core.BENCHMARK_DIMENSIONS, [2], rows=4)
+        self.seeds = CheckableList(list(config.SEEDS), [1], rows=4)
 
         self.dimensions.itemChanged.connect(lambda _item: self._refresh_functions())
         for widget in (self.functions, self.instances, self.seeds):
             widget.itemChanged.connect(lambda _item: self._refresh_estimate())
 
-        form.addRow("Source:", self.source_combo)
-        form.addRow("", self.source_note)
+        # Each note goes under the control it explains, in the same field
+        # cell. Adding it as its own row with an empty label left a column of
+        # blank label cells and spread the fields a screenful apart.
+        form.addRow("Source:", _with_note(self.source_combo, self.source_note))
         form.addRow("", self._build_custom_box())
-        form.addRow("Functions:", self.functions)
-        form.addRow("", self.function_note)
-        form.addRow("Instances:", self.instances)
-        form.addRow("", self.instance_note)
+        form.addRow("Functions:", _with_note(self.functions, self.function_note))
+        form.addRow("Instances:", _with_note(self.instances, self.instance_note))
         form.addRow("Dimensions:", self.dimensions)
         form.addRow("Seeds:", self.seeds)
         return box
 
     def _build_custom_box(self):
         self.custom_box = QtWidgets.QGroupBox("Your function")
-        form = QtWidgets.QFormLayout(self.custom_box)
+        form = panel_layout.form(self.custom_box)
 
         self.custom_expression = QtWidgets.QLineEdit("sum(x**2)")
         self.custom_expression.setToolTip(
@@ -158,9 +176,12 @@ class SetupPanel(QtWidgets.QWidget):
         return cfg
 
     def _current_source(self):
+        # source_from_config also raises bare ValueError for an unknown kind
+        # and KeyError for a malformed custom config, and this runs inside a
+        # currentIndexChanged slot where an escape is an unhandled exception.
         try:
             return problems_core.source_from_config(self.source_config())
-        except problems_core.ExpressionError:
+        except (problems_core.ExpressionError, ValueError, KeyError):
             return None
 
     def _on_source_changed(self):
@@ -175,7 +196,13 @@ class SetupPanel(QtWidgets.QWidget):
         # Only BBOB has instances; the others are one problem per function.
         self.instances.setEnabled(is_bbob)
         choices = source.instance_choices() if source else [1]
-        keep = [i for i in self.instances.values() if i in choices] or [1]
+        keep = [i for i in self.instances.values() if i in choices]
+        if not keep:
+            # Falling back to a literal [1] left nothing checked whenever 1 was
+            # not among the choices - and the list is disabled for non-BBOB
+            # sources, so validate() then refused to run something the user had
+            # no way to correct.
+            keep = choices[:1]
         self.instances.replace(choices, selected=keep)
         if is_bbob:
             self.instance_note.setText(
@@ -236,8 +263,15 @@ class SetupPanel(QtWidgets.QWidget):
                 )
             else:
                 note += f"  -  suite is defined for dimensions {', '.join(str(d) for d in supported)}"
-        elif isinstance(source, problems_core._OpfunuSourceBase):
-            total = len(source.full_catalog(dimensions[0]))
+        elif isinstance(source, problems_core.OpfunuSourceBase):
+            # Count against the same union the items came from. Comparing a
+            # single dimension's catalog with a multi-dimension union made
+            # `hidden` meaningless, and negative often enough.
+            total = len({
+                spec.id
+                for dimension in dimensions
+                for spec in source.full_catalog(dimension)
+            })
             hidden = total - len(items)
             if hidden > 0:
                 note += (
@@ -253,10 +287,10 @@ class SetupPanel(QtWidgets.QWidget):
             source = problems_core.source_from_config(self.source_config())
             value = source.validate(dimensions[0])
         except problems_core.ExpressionError as exc:
-            self.custom_status.setStyleSheet("color: #b91c1c;")
+            self.custom_status.setProperty("class", "error")
             self.custom_status.setText(str(exc))
             return False
-        self.custom_status.setStyleSheet("color: #15803d;")
+        self.custom_status.setProperty("class", "success")
         self.custom_status.setText(
             f"OK - f(centre) = {value:.6g} at dimension {dimensions[0]}"
         )
@@ -295,7 +329,12 @@ class SetupPanel(QtWidgets.QWidget):
 
     def _build_output_box(self):
         box = QtWidgets.QGroupBox("Output")
-        layout = QtWidgets.QVBoxLayout(box)
+        # The one group whose wrong setting destroys data: run_benchmarks
+        # writes by algorithm and problem id, so pointing a run at the real
+        # outputs/ overwrites existing trajectories in place. It gets a
+        # visual weight the other groups do not have.
+        box.setProperty("class", "destructive")
+        layout = panel_layout.column(box)
 
         self.sandbox_choice = QtWidgets.QRadioButton(
             "Sandbox workspace (recommended)"
@@ -308,7 +347,7 @@ class SetupPanel(QtWidgets.QWidget):
 
         self.output_hint = QtWidgets.QLabel()
         self.output_hint.setWordWrap(True)
-        self.output_hint.setStyleSheet("color: palette(mid);")
+        self.output_hint.setProperty("class", "hint")
 
         layout.addWidget(self.sandbox_choice)
         layout.addWidget(self.real_choice)
@@ -323,16 +362,18 @@ class SetupPanel(QtWidgets.QWidget):
 
         self.estimate = QtWidgets.QLabel()
         self.estimate.setWordWrap(True)
-        font = self.estimate.font()
-        font.setBold(True)
-        self.estimate.setFont(font)
+        self.estimate.setProperty("class", "metric")
 
         self.warning = QtWidgets.QLabel()
         self.warning.setWordWrap(True)
-        self.warning.setStyleSheet("color: #b45309;")
+        self.warning.setProperty("class", "warning")
         self.warning.hide()
 
         self.run_button = QtWidgets.QPushButton("Run benchmark")
+        self.run_button.setProperty("class", "primary")
+        self.run_button.setDefault(True)
+        self.run_button.setShortcut("Ctrl+Return")
+        self.run_button.setToolTip("Start the sweep described above (Ctrl+Return)")
         self.run_button.clicked.connect(self._request_run)
 
         layout.addWidget(self.estimate)
@@ -425,7 +466,7 @@ class SetupPanel(QtWidgets.QWidget):
 
         # Anything over a few minutes deserves saying out loud; the full sweep
         # is hours and is the repo's single most expensive operation.
-        if spec.estimate_seconds() > 600:
+        if spec.estimate_seconds() > LONG_RUN_SECONDS:
             self.warning.setText(
                 "This is a long job. It runs in-process and can be cancelled "
                 "at a run boundary, but partial results stay on disk."
@@ -483,4 +524,23 @@ class SetupPanel(QtWidgets.QWidget):
                 self, "Incomplete setup", "Cannot run:\n\n- " + "\n- ".join(problems)
             )
             return
+
+        # Anything past a few minutes is worth confirming. Picking the output
+        # folder already raises a modal; actually spending the hours did not.
+        seconds = spec.estimate_seconds()
+        if seconds > LONG_RUN_SECONDS:
+            answer = QtWidgets.QMessageBox.question(
+                self, "Start this run?",
+                f"{spec.describe()}\n\n"
+                f"{spec.total_runs:,} runs, estimated "
+                f"{format_duration(seconds)}.\n\n"
+                "It runs in this window and can be cancelled at a run "
+                "boundary, but whatever has finished stays on disk. Start?",
+                QtWidgets.QMessageBox.StandardButton.Yes
+                | QtWidgets.QMessageBox.StandardButton.Cancel,
+                QtWidgets.QMessageBox.StandardButton.Cancel,
+            )
+            if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+
         self.runRequested.emit(spec, self.real_choice.isChecked())

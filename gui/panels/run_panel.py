@@ -21,11 +21,13 @@ from pathlib import Path
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
+from gui import theme
+from gui.panels import layout as panel_layout
 from gui.qt import QtWidgets, Qt, Signal
-from gui.core import coverage as coverage_core
+from gui.core import results_root
 from gui.core.runner import BenchmarkRunner, finalise_run
 from gui.core.workspace import format_duration, write_manifest
-from gui.viz import style
+from gui.viz import figure_theme, style
 
 # Redrawing on every finished run is wasteful once runs are fast; the curve
 # is still correct, just refreshed at most this often.
@@ -53,14 +55,12 @@ class RunPanel(QtWidgets.QWidget):
 
         # -- header
         self.status = QtWidgets.QLabel("No run in progress.")
-        font = self.status.font()
-        font.setBold(True)
-        self.status.setFont(font)
+        self.status.setProperty("class", "metric")
 
         self.progress = QtWidgets.QProgressBar()
         self.progress.setTextVisible(True)
         self.timing = QtWidgets.QLabel()
-        self.timing.setStyleSheet("color: palette(mid);")
+        self.timing.setProperty("class", "hint")
 
         self.cancel_button = QtWidgets.QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
@@ -76,16 +76,14 @@ class RunPanel(QtWidgets.QWidget):
         self.figure = Figure(figsize=(6, 4), layout="constrained")
         self.axes = self.figure.add_subplot(1, 1, 1)
         self._reset_axes()
+        figure_theme.apply_to(self.figure)
         self.canvas = FigureCanvasQTAgg(self.figure)
 
         # -- log
         self.log = QtWidgets.QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(5000)
-        log_font = self.log.font()
-        log_font.setFamily("monospace")
-        log_font.setPointSize(max(log_font.pointSize() - 1, 8))
-        self.log.setFont(log_font)
+        self.log.setFont(theme.monospace_font(self.log))
 
         splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
         left = QtWidgets.QGroupBox("Live convergence")
@@ -94,9 +92,11 @@ class RunPanel(QtWidgets.QWidget):
         QtWidgets.QVBoxLayout(right).addWidget(self.log)
         splitter.addWidget(left)
         splitter.addWidget(right)
-        splitter.setSizes([700, 500])
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
+        splitter.setChildrenCollapsible(False)
 
-        layout = QtWidgets.QVBoxLayout(self)
+        layout = panel_layout.column(self)
         layout.addLayout(header)
         layout.addWidget(splitter, 1)
 
@@ -138,6 +138,10 @@ class RunPanel(QtWidgets.QWidget):
     def _cancel(self):
         if self._runner is not None:
             self.cancel_button.setEnabled(False)
+            # Cancellation only takes effect at the next run boundary, which
+            # can be minutes away. Saying so in the header matters: the status
+            # line otherwise keeps counting up as if nothing was asked.
+            self.status.setText("Cancelling - stopping after the current run...")
             self._runner.cancel()
 
     # -- progress --------------------------------------------------------
@@ -176,8 +180,12 @@ class RunPanel(QtWidgets.QWidget):
 
         key = (record["function"], record["instance"], record["dimension"])
         self._current_problem = key
-        problem_curves = self._curves_by_problem.setdefault(key, {})
+        problem_curves = self._curves_by_problem.pop(key, {})
         problem_curves.setdefault(record["algorithm"], []).append(curve)
+        # Re-insert so this problem is newest: plain setdefault left it at its
+        # original position, so the problem being plotted right now could be
+        # the one evicted below, blanking the live chart mid-sweep.
+        self._curves_by_problem[key] = problem_curves
 
         # Bound the memory a long sweep can accumulate: a full sweep visits
         # 360 problems, and only the recent ones are ever displayed.
@@ -189,7 +197,10 @@ class RunPanel(QtWidgets.QWidget):
     def _reset_axes(self, key=None):
         self.axes.clear()
         self.axes.set_xlabel("Iteration")
-        self.axes.set_ylabel("Best fitness so far")
+        # BBOB fitness spans 1e-12 to 1e8; on a linear axis almost every
+        # curve flattens onto zero and the plot says nothing.
+        self.axes.set_yscale("symlog", linthresh=1e-8)
+        self.axes.set_ylabel("Best fitness so far (symlog)")
         if key is None:
             self.axes.set_title("Waiting for the first run")
         else:
@@ -207,16 +218,21 @@ class RunPanel(QtWidgets.QWidget):
         # Distinct rather than thesis-matching: a live plot with three teal
         # lines tells the viewer nothing.
         palette = style.distinct_palette(list(curves))
+        fallback = style.distinct_palette(sorted(curves))
         for algorithm, runs in sorted(curves.items()):
-            colour = palette.get(algorithm)
+            # A missing key gave color=None, which matplotlib silently
+            # replaces from the default cycle - so the same algorithm could
+            # change colour between redraws.
+            colour = palette.get(algorithm) or fallback.get(algorithm)
             for index, curve in enumerate(runs):
                 self.axes.plot(
                     range(1, len(curve) + 1), curve,
-                    color=colour, linewidth=1.4, alpha=0.9,
+                    color=colour, linewidth=1.6, alpha=0.9,
                     label=algorithm if index == 0 else None,
                 )
         if curves:
-            self.axes.legend(fontsize=7, loc="upper right")
+            self.axes.legend(loc="upper right")
+        figure_theme.apply_to(self.figure)
         self.canvas.draw_idle()
 
     # -- completion ------------------------------------------------------
@@ -224,6 +240,9 @@ class RunPanel(QtWidgets.QWidget):
     def _on_completed(self, summary):
         self._redraw(force=True)
         self.cancel_button.setEnabled(False)
+        # A cancelled or partly failed run left the bar frozen at, say, 43%
+        # under the words "Run cancelled" - the bar contradicting the text.
+        self.progress.setValue(self.progress.maximum())
 
         status = "cancelled" if summary["cancelled"] else "finished"
         parts = [
@@ -241,21 +260,63 @@ class RunPanel(QtWidgets.QWidget):
             self._append("Every run failed - no trajectories were written.")
 
         if self._run_dir is not None:
-            finalise_run(self._run_dir, self._spec, summary)
-            self._append(f"Manifest updated: {self._run_dir / 'manifest.json'}")
+            try:
+                finalise_run(self._run_dir, self._spec, summary)
+                self._append(f"Manifest updated: {self._run_dir / 'manifest.json'}")
+            except OSError as exc:
+                # A manifest that cannot be written must not wedge is_running:
+                # everything below is what releases the panel for the next run.
+                self._append(f"Could not write the manifest: {exc}")
 
-        # New data may now exist, so cached coverage answers are stale.
-        coverage_core.invalidate()
-        self._runner = None
+        # New data may now exist, so every path-keyed cache is stale - not
+        # just coverage's. A benchmark writes raw trajectories, which the
+        # trajectory and raw-data views read through their own caches.
+        results_root.invalidate_caches()
+        self._release_runner()
         self.runFinished.emit(summary)
 
     def _on_failed(self, message):
         self.cancel_button.setEnabled(False)
+        self.progress.setValue(self.progress.maximum())
         self.status.setText("Run failed to start")
         self._append(message)
         if self._run_dir is not None and self._spec is not None:
-            write_manifest(self._run_dir, self._spec, status="error", error=message)
-        self._runner = None
+            try:
+                write_manifest(self._run_dir, self._spec, status="error",
+                               error=message)
+            except OSError as exc:
+                self._append(f"Could not write the manifest: {exc}")
+        # The runner can fail after writing some trajectories, so the caches
+        # are stale either way and the Data tab still needs refreshing -
+        # _on_completed does both and this used to do neither.
+        results_root.invalidate_caches()
+        self._release_runner()
+        self.runFinished.emit(
+            {"ok": self._done, "failed": 0, "cancelled": False,
+             "seconds": time.time() - self._started, "error": message}
+        )
+
+    def _release_runner(self):
+        """Drop the finished worker and let Qt destroy its C++ side.
+
+        The thread is parented to this panel, so without deleteLater() every
+        run leaves a finished QThread attached to it for the life of the app.
+        """
+        runner, self._runner = self._runner, None
+        if runner is not None:
+            runner.deleteLater()
+
+    # -- public API for the main window ----------------------------------
+
+    def request_cancel(self):
+        """Ask the running sweep to stop at the next run boundary."""
+        self._cancel()
+
+    def wait_for_exit(self, milliseconds):
+        """Block until the worker has actually finished. False on timeout."""
+        if self._runner is None:
+            return True
+        return self._runner.wait(milliseconds)
 
     def _append(self, text):
         self.log.appendPlainText(text)

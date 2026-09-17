@@ -24,19 +24,33 @@ import math
 import argparse
 from kneed import KneeLocator
 import itertools
+import config
 from config import (
     ALGORITHMS_OF_INTEREST, DIMENSIONS, PROCESSED_DIR, CLUSTERING_SEED,
     CLUSTERING_METHODS, clustering_dir,
 )
+from pipeline_api import Progress, StageResult
+
+STAGE = "clustering"
+DEFAULT_METHOD = "kmeans"
 
 ALL_REMOVED_ALGORITHMS = get_removed_algorithms()
-# Arguments to distinguish the type of clustering we want to do
-parser = argparse.ArgumentParser(prog='Clustering on meta-heuristic algorithm\'s trajectories', usage='%(prog)s [options]')
-parser.add_argument('-c', choices=CLUSTERING_METHODS, default='kmeans',
-                    help="Choose the clustering method (default: kmeans)")
-args = parser.parse_args()
 
-DATA_DIR = clustering_dir(args.c)
+
+def _build_parser():
+    """Built on demand, never at import.
+
+    parse_args() used to run at module scope, so importing this module from
+    anywhere that has its own command line - the desktop app, a test, a
+    notebook - parsed THAT process's argv and could SystemExit before a
+    single function was defined.
+    """
+    parser = argparse.ArgumentParser(
+        prog='Clustering on meta-heuristic algorithm\'s trajectories',
+        usage='%(prog)s [options]')
+    parser.add_argument('-c', choices=CLUSTERING_METHODS, default=DEFAULT_METHOD,
+                        help="Choose the clustering method (default: kmeans)")
+    return parser
 
 def determine_number_of_clusters(X):
     """
@@ -463,7 +477,9 @@ def fit_dbscan_adaptive(X, min_samples=100):
     return labels, noise_label, data
 """
 
-def process_dimension(dimension, data_dir, all_removed_algorithms, algorithms_of_interest):
+def process_dimension(dimension, data_dir, all_removed_algorithms,
+                      algorithms_of_interest, method=DEFAULT_METHOD,
+                      progress=None):
     """
     Process all problem files for a given dimensionality.
 
@@ -483,30 +499,59 @@ def process_dimension(dimension, data_dir, all_removed_algorithms, algorithms_of
     """
     create_output_directories(data_dir, dimension)
 
-    input_dir = f'{PROCESSED_DIR}/dim_{dimension}'
-    for filename in tqdm(os.listdir(input_dir)):
+    input_dir = f'{config.PROCESSED_DIR}/dim_{dimension}'
+    filenames = sorted(os.listdir(input_dir))
+    if progress is not None:
+        progress.begin(len(filenames), f"clustering dim {dimension}")
+
+    written = 0
+    for filename in tqdm(filenames):
+        if progress is not None and not progress.item(filename):
+            return written, True  # cancelled
         filepath = f'{input_dir}/{filename}'
         print("Clustering: " + filepath)
-        if args.c == 'dbscan':
+        if method == 'dbscan':
             for epsilon, ms in itertools.product([0.1], [100, 150]):
                 process_file(
                     filepath, filename, dimension, data_dir,
-                    all_removed_algorithms, algorithms_of_interest, kmeans=False, adaptive =  args.c == 'dbscan_adaptive', eps = epsilon, ms = ms
+                    all_removed_algorithms, algorithms_of_interest, kmeans=False, adaptive =  method == 'dbscan_adaptive', eps = epsilon, ms = ms
                 )
         else:
             process_file(filepath, filename, dimension, data_dir, all_removed_algorithms, algorithms_of_interest, kmeans=True)
+        written += 1
+    return written, False
+
+
+def run(progress_cb=None, cancel_event=None, method=DEFAULT_METHOD,
+        dimensions=None):
+    """Cluster every problem file, for every configured dimension.
+
+    `method` is a parameter rather than a module global read off sys.argv, so
+    the caller decides - and so cluster_similarity.py, which has to read the
+    directory this writes, can be given the same value.
+    """
+    dims = list(dimensions if dimensions is not None else DIMENSIONS)
+    data_dir = clustering_dir(method)
+    progress = Progress(progress_cb, cancel_event)
+    result = StageResult(STAGE, notes=[f"method={method}", f"seed={CLUSTERING_SEED}"])
+
+    print(data_dir)
+    for dimension in dims:
+        written, cancelled = process_dimension(
+            dimension, data_dir,
+            ALL_REMOVED_ALGORITHMS, ALGORITHMS_OF_INTEREST,
+            method=method, progress=progress,
+        )
+        result.written += written
+        if cancelled:
+            result.cancelled = True
+            return result
+    return result
 
 
 def main():
-    """
-    Main entry point: iterate over all configured dimensions and process each.
-    """
-    print(DATA_DIR)
-    for dimension in DIMENSIONS:
-        process_dimension(
-            dimension, DATA_DIR,
-            ALL_REMOVED_ALGORITHMS, ALGORITHMS_OF_INTEREST
-        )
+    args = _build_parser().parse_args()
+    run(method=args.c)
 
 
 if __name__ == '__main__':

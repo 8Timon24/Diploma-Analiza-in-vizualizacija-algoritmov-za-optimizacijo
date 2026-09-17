@@ -205,11 +205,14 @@ def behaviour(params):
         sns.lineplot(data=means, x="iteration", y="exploration", hue="algorithm",
                      hue_order=[a for a in algorithms if a in set(means["algorithm"])],
                      palette=palette, errorbar=None, ax=exploration_axes)
-        exploration_axes.axhline(50, color="gray", linestyle="--", alpha=0.6)
+        exploration_axes.axhline(50, color="gray", linestyle="--", alpha=0.6,
+                                 label="50% - even split")
     exploration_axes.set_ylim(0, 100)
     exploration_axes.set_xlabel("Iteration")
     exploration_axes.set_ylabel("Exploration (%)")
     exploration_axes.set_title("Exploration vs exploitation")
+    if exploration_axes.get_legend_handles_labels()[0]:
+        exploration_axes.legend(loc="upper right")
 
     figure.suptitle(
         f"{first}  vs  {second}   -   F{function}_I{instance}, dim {dimension}",

@@ -10,10 +10,14 @@ import pandas as pd
 import os
 from itertools import combinations
 from sklearn.metrics.pairwise import cosine_similarity
+import config
 from config import (
     ALGORITHMS_OF_INTEREST, DIMENSIONS, SEEDS as RUNS,
     CLUSTER_DISTRIBUTIONS_LATEST as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
 )
+from pipeline_api import Progress, StageResult
+
+STAGE = "cosine_pairwise"
 
 
 def flatten_algorithm_run(sub):
@@ -26,17 +30,27 @@ def flatten_algorithm_run(sub):
     return sub.sort_index().to_numpy().flatten()
 
 
-if __name__ == "__main__":
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+def run(progress_cb=None, cancel_event=None, dimensions=None):
+    """Global cosine distance between every pair of algorithms, per run."""
+    dims = list(dimensions if dimensions is not None else DIMENSIONS)
+    base_input = config.CLUSTER_DISTRIBUTIONS_LATEST
+    output_dir = config.METRICS_DIR
+    progress = Progress(progress_cb, cancel_event)
+    result = StageResult(STAGE)
+
+    os.makedirs(output_dir, exist_ok=True)
     algorithm_pairs = list(combinations(sorted(ALGORITHMS_OF_INTEREST), 2))
 
-    for d in DIMENSIONS:
-        os.makedirs(f'{OUTPUT_DIR}/cosine/dim_{d}', exist_ok=True)
-        input_dir = f'{INPUT_DIR}/dim_{d}'
+    for d in dims:
+        os.makedirs(f'{output_dir}/cosine/dim_{d}', exist_ok=True)
+        input_dir = f'{base_input}/dim_{d}'
 
-        for file in sorted(os.listdir(input_dir)):
-            if not file.endswith('.csv'):
-                continue
+        files = [f for f in sorted(os.listdir(input_dir)) if f.endswith('.csv')]
+        progress.begin(len(files), f"cosine dim {d}")
+        for file in files:
+            if not progress.item(file):
+                result.cancelled = True
+                return result
             problem_name = file.replace('.csv', '')   # e.g. "F1_I1"
             prob = problem_name.split('_')[0]          # "F1"
             inst = problem_name.split('_')[1]          # "I1"
@@ -65,5 +79,16 @@ if __name__ == "__main__":
                            "Cosine_distance": distance}
                     rows.append(row)
 
-            result = pd.DataFrame(rows)
-            result.to_csv(f'{OUTPUT_DIR}/cosine/dim_{d}/{problem_name}.csv', index=False)
+            result_frame = pd.DataFrame(rows)
+            result_frame.to_csv(f'{output_dir}/cosine/dim_{d}/{problem_name}.csv', index=False)
+            result.written += 1
+
+    return result
+
+
+def main():
+    run()
+
+
+if __name__ == "__main__":
+    main()

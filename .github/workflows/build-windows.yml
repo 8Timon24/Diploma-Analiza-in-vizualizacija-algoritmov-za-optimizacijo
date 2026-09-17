@@ -1,0 +1,51 @@
+name: build-windows-exe
+
+# PyInstaller cannot cross-compile: a Windows .exe has to be built on
+# Windows, and development here happens on Linux. This runner is therefore
+# the only place the shipped artifact is produced.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 3.10 is not arbitrary: cocoex (coco-experiment) is a compiled C
+      # extension published as cp39-cp312 win_amd64 wheels, and this matches
+      # the interpreter the app was developed and verified against.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install app dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r packaging/requirements-app.txt
+
+      - name: Confirm cocoex installed from a wheel, not a source build
+        run: python -c "import cocoex; print('cocoex', cocoex.__file__)"
+
+      - name: Build
+        run: pyinstaller packaging/gui.spec --noconfirm
+
+      # The checks that only fail once packaged: mealpy is discovered with
+      # pkgutil.walk_packages (invisible to PyInstaller), opfunu's CEC suites
+      # need ~1190 bundled data files, and cocoex is a C extension. Each
+      # failure is silent in a build log and obvious here.
+      - name: Self-test the built exe
+        run: .\dist\OptimizerTrajectoryExplorer\OptimizerTrajectoryExplorer.exe --self-test
+
+      - name: Report bundle size
+        shell: bash
+        run: du -sh dist/OptimizerTrajectoryExplorer
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OptimizerTrajectoryExplorer-windows
+          path: dist/OptimizerTrajectoryExplorer
+          retention-days: 30

@@ -26,6 +26,21 @@ Each metric produces one number per (algorithm A, algorithm B, function, instanc
 | `location` | Euclidean distance between the two final solutions |
 | `fitness` | Difference in final objective value |
 
+## Two ways to use it
+
+One codebase with two front-ends over the same code. The desktop app **imports**
+the pipeline — `config.py`, `helper_functions.py`, and the plotting functions in
+`04_metrics/` and `05_analysis/` — rather than reimplementing any of it, so a
+figure drawn in the app is the figure the pipeline produces.
+
+| | What it is | Reach for it when |
+|---|---|---|
+| **[Command-line pipeline](#the-command-line-pipeline)** | The thesis workflow: 14 batch steps from benchmark to Spearman correlation | Reproducing the thesis results, or running the full sweep |
+| **[Desktop app](#the-desktop-app)** | A PySide6 GUI: pick optimizers, run scoped experiments, browse the data, render the figures | Exploring results, trying other optimizers or benchmark suites, showing the work to someone |
+
+The pipeline is the source of truth and runs standalone; the app is optional and
+nothing in the pipeline imports it.
+
 ## Requirements
 
 Python 3.10, and the packages in `requirements.txt`. The one that may need attention is
@@ -41,7 +56,7 @@ No directories need to be created by hand. `data/`, `outputs/`, `metrics_data/` 
 `figures_*/` folders are generated, gitignored, and absent from a fresh clone; every step
 creates what it needs on first write.
 
-## Running the pipeline
+## The command-line pipeline
 
 `run_pipeline.py` runs all 14 steps in order, each as a separate subprocess, stopping at
 the first failure so nothing runs on broken data:
@@ -80,6 +95,10 @@ Scripts live in numbered folders that mirror the execution order:
 Supporting code sits at the repo root: `config.py` (all constants and paths),
 `utils.py` and `helper_functions.py` (shared helpers), `run_pipeline.py` (the orchestrator).
 `scratch/` holds one-off diagnostic scripts and `tests/` the test suite.
+
+`gui/` is the desktop app and `packaging/` its build spec. Both sit alongside the
+pipeline rather than wrapping it: the numbered stages above run exactly as they
+always have, with or without the app installed.
 
 `config.py` is the single place to change the algorithm list, the dimensions/functions/
 instances/seeds swept, the clustering seed, and every input/output directory.
@@ -121,7 +140,7 @@ Note it deliberately regresses the *scalars*, not averaged pairwise distances: f
 difference-type metric, averaging over partners is V-shaped in the underlying scalar, so it
 measures atypicality rather than magnitude (see the module docstring).
 
-## Desktop app
+## The desktop app
 
 A PySide6 GUI over the same pipeline: pick optimizers and benchmark functions,
 run a scoped experiment, browse the raw data, and render the project's figures
@@ -198,7 +217,7 @@ pytest tests/                          # fast unit tests, ~0.4s, no real data ne
 pytest tests/smoke_test_pipeline.py    # end-to-end: the whole pipeline on a tiny sweep
 ```
 
-The smoke test runs all 13 steps for real (2 algorithms, 2 functions, one dimension) in an
+The smoke test runs all 14 steps for real (2 algorithms, 2 functions, one dimension) in an
 isolated temporary directory, so it never touches your actual results. It is deliberately
 named so `pytest tests/` does not pick it up.
 

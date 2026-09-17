@@ -174,15 +174,36 @@ Example:
 -> run_benchmarks(suite, observer, {"DevBBO": optimizers["DevBBO"]}, "output_single", seed=1, epoch_per_dim=10, pop_size=50)
 -> run_benchmarks(suite, observer, optimizers, "output_all", seed=2, epoch_per_dim=10, pop_size=50)
 """
-def run_benchmarks(suite, observer, optimizers, out_dir, seed=1, epoch_per_dim=10, pop_size=20, charts=False, results=False, only_best=False, save_diversity=False):
+def run_benchmarks(suite, observer, optimizers, out_dir, seed=1, epoch_per_dim=10, pop_size=20,
+                   charts=False, results=False, only_best=False, save_diversity=False,
+                   progress_cb=None, cancel_event=None):
+    """...
+    progress_cb, if given, is called once per finished problem with a dict
+    describing it (algorithm, problem, fitness, evaluations, the g_best
+    curve, and status 'ok' or 'failed'). Failures are reported through it
+    as well as printed, so a caller can tell 'finished' apart from
+    'everything failed' - which the printed output alone does not allow.
+
+    cancel_event, if given, is a threading.Event checked between problems;
+    when set, the run stops cleanly at the next boundary rather than being
+    killed mid-write.
+
+    Both default to None, so the CLI path behaves exactly as before.
+    """
     for name, algo_class in optimizers.items():
         print(f"\n{'='*50}")
         print(f"Running optimizer: {name}")
         print(f"{'='*50}")
 
+        if cancel_event is not None and cancel_event.is_set():
+            return
+
         suite.reset()  
 
         for problem in suite:
+            if cancel_event is not None and cancel_event.is_set():
+                return
+
             problem.observe_with(observer)
 
             def objective(solution, p=problem):
@@ -242,8 +263,36 @@ def run_benchmarks(suite, observer, optimizers, out_dir, seed=1, epoch_per_dim=1
                 
                 print(f"  [{name}] {problem.id} | f*={result.target.fitness:.4e} | evals={problem.evaluations} | epoch={epoch}")
 
+                if progress_cb is not None:
+                    progress_cb({
+                        "status": "ok",
+                        "algorithm": name,
+                        "problem": problem.id,
+                        "function": problem.id_function,
+                        "instance": problem.id_instance,
+                        "dimension": problem.dimension,
+                        "seed": seed,
+                        "epoch": epoch,
+                        "evaluations": problem.evaluations,
+                        "fitness": float(result.target.fitness),
+                        # fitness column of the g_best trajectory: one value
+                        # per iteration, which is the convergence curve.
+                        "curve": [float(row[-2]) for row in best_traj],
+                    })
+
             except Exception as e:
                 print(f"  [{name}] {problem.id} | FAILED: {e}")
+                if progress_cb is not None:
+                    progress_cb({
+                        "status": "failed",
+                        "algorithm": name,
+                        "problem": problem.id,
+                        "function": getattr(problem, "id_function", None),
+                        "instance": getattr(problem, "id_instance", None),
+                        "dimension": getattr(problem, "dimension", None),
+                        "seed": seed,
+                        "error": str(e),
+                    })
 
 def population_trajectory(model, pop_size):
     trajectory = []
@@ -263,10 +312,19 @@ Returns a cocoex suite for the parameters which are given as lists of integers:
 -> dimensions [2, 3, 5, 10, 20, 40]
 """
 def get_suite(functions, instances, dimensions):
+    # The second argument declares which instances the suite contains, and
+    # instance_indices below is POSITIONAL into that list - not a lookup by
+    # instance number. Left empty, COCO declares only 15 instances
+    # (1-5 and 71-80), so "instance_indices:6" silently returned instance 71,
+    # instances 6-70 and 81-110 were unreachable, and any index above 15 was
+    # ignored - which made the filter match every instance instead of one.
+    # Declaring 1-110 makes index N mean instance N, as the docstring above
+    # has always claimed and as run_benchmarks.py's -i choices imply.
+    # Instances 1-5 are unaffected, so results already in outputs/ stay valid.
     suite_filter = (
         f"function_indices:{','.join(map(str, functions))} "
         f"instance_indices:{','.join(map(str, instances))} "
         f"dimensions:{','.join(map(str, dimensions))}"
     )
 
-    return cocoex.Suite("bbob", "", suite_filter)
+    return cocoex.Suite("bbob", "instances:1-110", suite_filter)

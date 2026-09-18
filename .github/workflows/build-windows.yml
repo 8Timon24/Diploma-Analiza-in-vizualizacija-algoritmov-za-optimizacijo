@@ -46,8 +46,18 @@ jobs:
       # pkgutil.walk_packages (invisible to PyInstaller), opfunu's CEC suites
       # need ~1190 bundled data files, and cocoex is a C extension. Each
       # failure is silent in a build log and obvious here.
+      #
+      # The explicit $LASTEXITCODE check guards against a known pwsh
+      # footgun on GitHub's windows-latest runners: a native .exe's non-zero
+      # exit code is not guaranteed to fail a `run:` step on its own the way
+      # it would under bash. Added after a build that was missing three
+      # runtime dependencies (tqdm, kneed, yellowbrick - see
+      # packaging/requirements-app.txt) still produced a Release; this line
+      # closes that gap regardless of the exact mechanism.
       - name: Self-test the built exe
-        run: .\dist\OptimizerTrajectoryExplorer\OptimizerTrajectoryExplorer.exe --self-test
+        run: |
+          .\dist\OptimizerTrajectoryExplorer\OptimizerTrajectoryExplorer.exe --self-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Report bundle size
         shell: bash

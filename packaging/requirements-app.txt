@@ -20,6 +20,22 @@ scikit-learn==1.7.2
 matplotlib==3.10.8
 seaborn==0.13.2
 
+# yellowbrick + kneed: 03_cluster/cluster_trajectories.py's elbow-method k
+# selection, which the Process tab runs in the packaged app now (see
+# packaging/gui.spec's own note on why these two aren't excluded).
+yellowbrick==1.5
+kneed==0.8.6
+
+# utils.py and several 03_cluster/04_metrics/05_analysis stage modules
+# import this directly for progress bars. Not a dependency of anything else
+# pinned here (verified: none of PySide6/coco-experiment/opfunu/numpy/
+# pandas/scipy/scikit-learn/matplotlib/seaborn/fastparquet/yellowbrick/kneed
+# declare it), so nothing pulls it in on its own - omitting it produces a
+# working *build* (PyInstaller has nothing to complain about) that fails at
+# *runtime* the moment the Setup tab tries to discover optimizers, with
+# "No module named tqdm".
+tqdm==4.67.3
+
 # Parquet reader for data/clustering_latest/clustering_results/*.parquet.
 # fastparquet rather than pyarrow: it reads the same files and is ~137 MB
 # smaller in the bundle (see packaging/gui.spec).

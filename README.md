@@ -1,7 +1,6 @@
-# Analiza in vizualizacija algoritmov za optimizacijo prek iskalnih trajektorij
+# Analysis and visualization of optimization algorithms via their search trajectories
 
-**Analysis and visualization of optimization algorithms via their search trajectories** —
-a diploma thesis codebase.
+**Diploma thesis codebase** 
 
 Metaheuristic optimizers are usually compared by *how good* their final solution is. This
 project compares them by *how they search*: it records the full population trajectory of

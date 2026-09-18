@@ -265,6 +265,7 @@ class TrajectoryPanel(QtWidgets.QWidget):
         self._set_playback_enabled(False)
         self.axes.clear()
         self.axes.set_title("Choose a problem and press Load")
+        figure_theme.apply_to(self.figure)
         self.canvas.draw_idle()
         self.status.setText("Results folder changed - press Load.")
 
@@ -276,6 +277,7 @@ class TrajectoryPanel(QtWidgets.QWidget):
         self.axes.set_title("Could not load")
         self.axes.text(0.5, 0.5, message, ha="center", va="center", wrap=True,
                        transform=self.axes.transAxes, fontsize=9)
+        figure_theme.apply_to(self.figure)
         self.canvas.draw_idle()
 
     # -- drawing ---------------------------------------------------------
@@ -389,6 +391,14 @@ class TrajectoryPanel(QtWidgets.QWidget):
             total = self._selection["cluster"].nunique()
             title += f"\npopulation spread over {occupied} of {total} clusters"
         self.axes.set_title(title)
+        # set_title() (and, on the first frame after a load, the contour,
+        # scatters and legend built fresh in _draw_background/_rebuild_
+        # artists) create new artists with matplotlib's stock black-on-white
+        # defaults - apply_to() was only ever called once, at construction,
+        # before any of that existed. Every redraw needs it again, which is
+        # also what makes GIF export (FuncAnimation calls this directly,
+        # bypassing _draw_current) come out themed too.
+        figure_theme.apply_to(self.figure)
         return list(self._scatters.values()) + [self._trail]
 
     # -- playback --------------------------------------------------------

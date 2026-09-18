@@ -179,3 +179,36 @@ def test_select_stages_with_nothing_disables_run(panel):
     panel.select_stages([])
     assert panel.selected_stages() == []
     assert panel.run_button.isEnabled() is False
+
+
+# -- context: what this panel would actually run against ------------------
+#
+# "Right now in the process tab it isn't clear what data/dimensions/
+# algorithms it runs on." - the confirmation dialog named the target
+# folder, but only after Run was already clicked. This label answers that
+# up front.
+
+def test_context_names_the_active_results_folder(panel, monkeypatch):
+    from gui.core import results_root
+
+    monkeypatch.setattr(results_root, "_current", Path("/tmp/some-results-tree"))
+    panel.refresh()
+    assert "/tmp/some-results-tree" in panel.context.text()
+
+
+def test_context_names_the_dimensions_pipeline_stages_will_run_over(panel, monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, "DIMENSIONS", [2, 5])
+    panel.refresh()
+    assert "2, 5" in panel.context.text()
+
+
+def test_context_is_refreshed_when_the_results_folder_changes(panel, monkeypatch):
+    """main_window.py calls pipeline_panel.refresh() alongside
+    data_panel.refresh() and viz_panel.refresh() whenever the results root
+    moves - pinned here as source, since nothing in this panel reacts to
+    results_root.set_root() on its own."""
+    source = Path(__file__).resolve().parents[1] / "gui" / "main_window.py"
+    text = source.read_text()
+    assert "self.pipeline_panel.refresh()" in text

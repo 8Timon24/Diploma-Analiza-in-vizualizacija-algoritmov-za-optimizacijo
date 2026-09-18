@@ -138,6 +138,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if stored and Path(stored).is_dir():
             results_root.set_root(stored)
             self.data_panel.refresh()
+            self.pipeline_panel.refresh()
 
     def choose_results_folder(self):
         directory = QtWidgets.QFileDialog.getExistingDirectory(
@@ -178,6 +179,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.data_panel.refresh()
         self.viz_panel.refresh()
+        self.pipeline_panel.refresh()
         self.trajectory_panel.reset_view()
 
         if summary.is_usable:

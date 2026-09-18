@@ -18,7 +18,7 @@ What this panel is careful about, in order of how much damage each would do:
 """
 import time
 
-from gui import theme
+from gui import icons, theme
 from gui.core import pipeline as pipeline_core
 from gui.core import results_root
 from gui.panels import layout as panel_layout
@@ -99,6 +99,10 @@ class PipelinePanel(JobPanel):
 
     # -- construction ----------------------------------------------------
 
+    def refresh_icons(self):
+        """See setup_panel.SetupPanel.refresh_icons."""
+        self.run_button.setIcon(icons.icon("play", theme.tokens()["accent_text"]))
+
     def refresh(self):
         """Re-read what this panel would run against.
 
@@ -117,7 +121,7 @@ class PipelinePanel(JobPanel):
         )
 
     def _build_controls(self):
-        box = QtWidgets.QGroupBox("Stages")
+        box = panel_layout.group_box("Stages")
 
         # What this panel would actually run against, visible before a single
         # box is ticked. "Results folder: <checkout>" in the log after
@@ -160,7 +164,8 @@ class PipelinePanel(JobPanel):
         self.warning.setWordWrap(True)
         self.warning.setProperty("class", "warning")
 
-        self.run_button = QtWidgets.QPushButton("Run pipeline")
+        self.run_button = QtWidgets.QPushButton(
+            icons.icon("play", theme.tokens()["accent_text"]), "Run pipeline")
         self.run_button.setProperty("class", "primary")
         self.run_button.setDefault(True)
         self.run_button.setShortcut("Ctrl+Return")

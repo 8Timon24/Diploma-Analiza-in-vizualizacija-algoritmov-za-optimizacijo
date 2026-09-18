@@ -15,11 +15,11 @@ import os
 
 os.environ.setdefault("QT_API", "pyside6")
 
-from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets, QtSvg  # noqa: E402
 from PySide6.QtCore import Qt, Signal, Slot  # noqa: E402
 
 import matplotlib  # noqa: E402
 
 matplotlib.use("QtAgg")
 
-__all__ = ["QtCore", "QtGui", "QtWidgets", "Qt", "Signal", "Slot"]
+__all__ = ["QtCore", "QtGui", "QtWidgets", "QtSvg", "Qt", "Signal", "Slot"]

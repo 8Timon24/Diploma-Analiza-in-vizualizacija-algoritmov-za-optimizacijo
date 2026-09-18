@@ -9,6 +9,7 @@ from pathlib import Path
 
 from gui.qt import QtCore, QtGui, QtWidgets, Qt, Signal
 from gui import theme
+from gui import icons
 from gui.core import optimizers as optimizers_core
 from gui.core import results_root
 from gui.core import workspace as workspace_core
@@ -47,8 +48,14 @@ class MainWindow(QtWidgets.QMainWindow):
         # Also applied by __main__, but the self-test and any embedding code
         # build the window against their own QApplication.
         theme.apply()
+        self._restore_appearance_mode()
         self.setWindowTitle(APP_NAME)
         self.resize(1300, 860)
+        # Below this width the Setup tab's form can't lay out label-beside-
+        # field (a deliberate choice - see gui/panels/layout.py::form) without
+        # a horizontal scrollbar and truncated hint text. Measured directly:
+        # the scrollbar first appears between 1060 and 1070px wide.
+        self.setMinimumSize(1080, 700)
 
         self.setup_panel = SetupPanel()
         self.setup_panel.runRequested.connect(self._start_run)
@@ -65,18 +72,31 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setDocumentMode(True)
-        for panel, label, tip in (
-            (self.setup_panel, "Setup", "Choose what to run and see what it costs"),
-            (self.run_panel, "Run", "Watch a sweep: progress, live convergence, log"),
+        self.tabs.setIconSize(QtCore.QSize(18, 18))
+        icon_color = theme.tokens()["muted"]
+        # Kept as an instance attribute (not just consumed here) so
+        # _refresh_icons() can redraw each tab's icon after an explicit
+        # appearance switch, without re-adding the tabs.
+        self._tab_icon_names = []
+        for panel, label, tip, icon_name in (
+            (self.setup_panel, "Setup", "Choose what to run and see what it costs",
+             "sliders-horizontal"),
+            (self.run_panel, "Run", "Watch a sweep: progress, live convergence, log",
+             "play"),
             (self.pipeline_panel, "Process",
-             "Cluster the trajectories and compute every metric"),
-            (self.viz_panel, "Visualize", "Render any figure from the computed metrics"),
-            (self.trajectory_panel, "Trajectory", "Animate a 2-D search in the real space"),
-            (self.compare_panel, "Compare", "Two algorithms, every metric, side by side"),
-            (self.data_panel, "Data", "Browse and export any file the pipeline wrote"),
+             "Cluster the trajectories and compute every metric", "workflow"),
+            (self.viz_panel, "Visualize", "Render any figure from the computed metrics",
+             "chart-column"),
+            (self.trajectory_panel, "Trajectory", "Animate a 2-D search in the real space",
+             "route"),
+            (self.compare_panel, "Compare", "Two algorithms, every metric, side by side",
+             "git-compare"),
+            (self.data_panel, "Data", "Browse and export any file the pipeline wrote",
+             "database"),
         ):
-            index = self.tabs.addTab(panel, label)
+            index = self.tabs.addTab(panel, icons.icon(icon_name, icon_color), label)
             self.tabs.setTabToolTip(index, tip)
+            self._tab_icon_names.append(icon_name)
 
         # The tab widget sat flush against the window frame on all four sides.
         host = QtWidgets.QWidget()
@@ -90,6 +110,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.data_panel.changeRootRequested.connect(self.choose_results_folder)
         self._build_menu()
         self._restore_results_root()
+
+        # theme's on_change list is module-global, so a callback registered
+        # here would otherwise outlive this window (real risk in the
+        # self-test and in ad-hoc scripts, which build more than one
+        # MainWindow in one process) and fire against a deleted C++ object.
+        theme.on_change(self._refresh_icons)
+        self.destroyed.connect(lambda: theme.off_change(self._refresh_icons))
 
         self.statusBar().showMessage("Discovering mealpy optimizers...")
 
@@ -129,8 +156,56 @@ class MainWindow(QtWidgets.QMainWindow):
         quit_action.setShortcut("Ctrl+Q")
         quit_action.triggered.connect(self.close)
 
+        view_menu = self.menuBar().addMenu("&View")
+        appearance_menu = view_menu.addMenu("Appearance")
+        group = QtGui.QActionGroup(self)
+        group.setExclusive(True)
+        self._appearance_actions = {}
+        for mode, label in (
+            ("system", "Match system"),
+            ("light", "Light"),
+            ("dark", "Dark"),
+        ):
+            action = appearance_menu.addAction(label)
+            action.setCheckable(True)
+            action.triggered.connect(
+                lambda _checked=False, m=mode: self._set_appearance_mode(m)
+            )
+            group.addAction(action)
+            self._appearance_actions[mode] = action
+        # _restore_appearance_mode() already ran (before any panel was
+        # built, to avoid a startup flash), so theme.mode() here is the
+        # restored value, not always "system".
+        self._appearance_actions[theme.mode()].setChecked(True)
+
     def _settings(self):
         return QtCore.QSettings("OptimizerTrajectoryExplorer", "gui")
+
+    def _restore_appearance_mode(self):
+        """Applied before any panel/icon is built, so the app never flashes
+        the wrong palette and icons are painted in the right colour the
+        first time, not redrawn a moment later."""
+        stored = self._settings().value("appearance_mode", "system", str)
+        if stored not in ("system", "light", "dark"):
+            stored = "system"
+        theme.set_mode(stored)
+
+    def _set_appearance_mode(self, mode):
+        theme.set_mode(mode)
+        self._settings().setValue("appearance_mode", mode)
+
+    def _refresh_icons(self):
+        """Redo every icon that was baked into a QIcon/QPixmap at
+        construction time, for every widget still holding one after this
+        window is fully built. Registered with theme.on_change() (see
+        __init__) rather than called ad hoc, so it also covers a future
+        appearance switch triggered some other way, not just this menu."""
+        muted = theme.tokens()["muted"]
+        for index, name in enumerate(self._tab_icon_names):
+            self.tabs.setTabIcon(index, icons.icon(name, muted))
+        for panel in (self.setup_panel, self.pipeline_panel, self.viz_panel,
+                      self.compare_panel, self.trajectory_panel):
+            panel.refresh_icons()
 
     def _restore_results_root(self):
         """Reopen whatever folder was in use last time, if it still exists."""

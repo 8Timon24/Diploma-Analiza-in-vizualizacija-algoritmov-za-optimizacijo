@@ -86,9 +86,9 @@ class RunPanel(QtWidgets.QWidget):
         self.log.setFont(theme.monospace_font(self.log))
 
         splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
-        left = QtWidgets.QGroupBox("Live convergence")
+        left = panel_layout.group_box("Live convergence")
         QtWidgets.QVBoxLayout(left).addWidget(self.canvas)
-        right = QtWidgets.QGroupBox("Log")
+        right = panel_layout.group_box("Log")
         QtWidgets.QVBoxLayout(right).addWidget(self.log)
         splitter.addWidget(left)
         splitter.addWidget(right)

@@ -6,7 +6,7 @@ same two algorithms in three separate forms would defeat it.
 """
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 
-from gui import theme
+from gui import icons, theme
 from gui.panels import layout as panel_layout
 from gui.qt import QtWidgets, Qt
 from gui.viz import compare, figure_theme
@@ -74,7 +74,7 @@ class ComparePanel(QtWidgets.QWidget):
         layout.addWidget(splitter)
 
     def _build_controls(self):
-        box = QtWidgets.QGroupBox("Compare")
+        box = panel_layout.group_box("Compare")
         form = QtWidgets.QFormLayout(box)
 
         self.algorithm_a = QtWidgets.QComboBox()
@@ -110,7 +110,8 @@ class ComparePanel(QtWidgets.QWidget):
         for s in config.SEEDS:
             self.seeds.addItem(f"run {s}", [s])
 
-        self.compare_button = QtWidgets.QPushButton("Compare")
+        self.compare_button = QtWidgets.QPushButton(
+            icons.icon("git-compare", theme.tokens()["accent_text"]), "Compare")
         self.compare_button.setProperty("class", "primary")
         self.compare_button.setDefault(True)
         self.compare_button.setShortcut("Ctrl+Return")
@@ -133,6 +134,11 @@ class ComparePanel(QtWidgets.QWidget):
         form.addRow("", self.compare_button)
         form.addRow("", note)
         return box
+
+    def refresh_icons(self):
+        """See setup_panel.SetupPanel.refresh_icons."""
+        self.compare_button.setIcon(
+            icons.icon("git-compare", theme.tokens()["accent_text"]))
 
     def set_registry(self, registry):
         """Offer every optimizer that has pairwise metrics, plus any the user
@@ -217,6 +223,7 @@ class ComparePanel(QtWidgets.QWidget):
 
         canvas = FigureCanvasQTAgg(figure)
         toolbar = NavigationToolbar2QT(canvas, self)
+        icons.restyle_toolbar(toolbar)
         # A tall figure (six stacked metric rows) must not be silently cut
         # off at the bottom of the viewport.
         width, height = figure.get_size_inches() * figure.dpi

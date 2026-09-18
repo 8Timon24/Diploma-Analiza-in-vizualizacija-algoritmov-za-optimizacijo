@@ -55,6 +55,19 @@ def _apply(layout, margins, spacing):
     layout.setSpacing(spacing)
 
 
+def group_box(title, parent=None):
+    """A QGroupBox with the app's small-caps section-label look.
+
+    Qt's Fusion style does not apply `text-transform`/`letter-spacing` to
+    the QGroupBox::title subcontrol (verified by rendering one in
+    isolation), so theme.py's stylesheet rules for those two properties are
+    silently ignored. Upper-casing the string itself is what actually
+    delivers the look those rules were meant to produce.
+    """
+    return QtWidgets.QGroupBox(title.upper(), parent) if parent else \
+        QtWidgets.QGroupBox(title.upper())
+
+
 def note(text, parent=None):
     """Secondary explanatory text, styled once instead of per panel."""
     label = QtWidgets.QLabel(text, parent)

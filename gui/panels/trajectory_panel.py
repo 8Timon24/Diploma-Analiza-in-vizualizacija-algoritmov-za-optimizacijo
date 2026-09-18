@@ -18,6 +18,7 @@ import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
 
+from gui import icons, theme
 from gui.panels import layout as panel_layout
 from gui.qt import QtCore, QtWidgets, Qt
 from gui.core import optimizers as optimizers_core
@@ -65,6 +66,7 @@ class TrajectoryPanel(QtWidgets.QWidget):
         figure_theme.apply_to(self.figure)
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.toolbar = NavigationToolbar2QT(self.canvas, self)
+        icons.restyle_toolbar(self.toolbar)
 
         playback = self._build_playback()
 
@@ -93,7 +95,7 @@ class TrajectoryPanel(QtWidgets.QWidget):
     # -- construction ----------------------------------------------------
 
     def _build_controls(self):
-        box = QtWidgets.QGroupBox("Problem")
+        box = panel_layout.group_box("Problem")
         form = QtWidgets.QFormLayout(box)
 
         self.function = QtWidgets.QComboBox()
@@ -136,7 +138,8 @@ class TrajectoryPanel(QtWidgets.QWidget):
         self.show_trail.setChecked(True)
         self.show_trail.toggled.connect(lambda _on: self._draw_current())
 
-        self.load_button = QtWidgets.QPushButton("Load")
+        self.load_button = QtWidgets.QPushButton(
+            icons.icon("route", theme.tokens()["accent_text"]), "Load")
         self.load_button.setProperty("class", "primary")
         self.load_button.setDefault(True)
         self.load_button.setShortcut("Ctrl+Return")
@@ -198,6 +201,11 @@ class TrajectoryPanel(QtWidgets.QWidget):
     def _set_playback_enabled(self, enabled):
         for widget in (self.play_button, self.slider, self.fps, self.export_button):
             widget.setEnabled(enabled)
+
+    def refresh_icons(self):
+        """See setup_panel.SetupPanel.refresh_icons."""
+        self.load_button.setIcon(icons.icon("route", theme.tokens()["accent_text"]))
+        icons.restyle_toolbar(self.toolbar)
 
     def set_registry(self, registry):
         """Offer every optimizer, not just the thesis set - a GUI run may

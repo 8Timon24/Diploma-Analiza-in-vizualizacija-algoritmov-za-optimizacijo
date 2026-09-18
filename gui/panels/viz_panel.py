@@ -10,7 +10,7 @@ from pathlib import Path
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.backends.backend_qtagg import NavigationToolbar2QT
 
-from gui import theme
+from gui import icons, theme
 from gui.panels import layout as panel_layout
 from gui.qt import QtWidgets, Qt, Signal
 from gui.panels.widgets import CheckableList
@@ -55,7 +55,8 @@ class VizPanel(QtWidgets.QWidget):
         self.form = QtWidgets.QFormLayout(self.form_host)
         self.form.setContentsMargins(0, 4, 0, 4)
 
-        self.render_button = QtWidgets.QPushButton("Render")
+        self.render_button = QtWidgets.QPushButton(
+            icons.icon("chart-column", theme.tokens()["accent_text"]), "Render")
         self.render_button.setProperty("class", "primary")
         self.render_button.setDefault(True)
         self.render_button.setShortcut("Ctrl+R")
@@ -105,6 +106,13 @@ class VizPanel(QtWidgets.QWidget):
         layout.addWidget(splitter)
 
         self.list.setEnabled(False)
+
+    def refresh_icons(self):
+        """See setup_panel.SetupPanel.refresh_icons."""
+        self.render_button.setIcon(
+            icons.icon("chart-column", theme.tokens()["accent_text"]))
+        if self._toolbar is not None:
+            icons.restyle_toolbar(self._toolbar)
 
     def activate(self):
         """Select the first visualization. Called once the optimizer registry
@@ -343,7 +351,9 @@ class VizPanel(QtWidgets.QWidget):
             # offers both buttons and the user picks the order.
             runnable = [name for name in coverage.stages if name != "benchmark"]
             if runnable:
-                process = QtWidgets.QPushButton("Run these steps now...")
+                process = QtWidgets.QPushButton(
+                    icons.icon("workflow", theme.tokens()["accent_text"]),
+                    "Run these steps now...")
                 process.setProperty("class", "primary")
                 process.setToolTip(
                     "Opens the Process tab with exactly these stages ticked. "
@@ -391,6 +401,7 @@ class VizPanel(QtWidgets.QWidget):
         self._figure = figure
         self._canvas = FigureCanvasQTAgg(figure)
         self._toolbar = NavigationToolbar2QT(self._canvas, self)
+        icons.restyle_toolbar(self._toolbar)
         scroll = QtWidgets.QScrollArea()
         scroll.setWidget(self._canvas)
         scroll.setWidgetResizable(True)

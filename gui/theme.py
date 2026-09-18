@@ -4,9 +4,10 @@ Before this existed the app ran on the bare platform style and every panel
 styled its own labels, several with hardcoded hex colours that inverted badly
 on a dark desktop. Everything visual now comes from here:
 
-  * a light and a dark palette, chosen from the OS preference and re-applied
-    live when it changes (Qt 6.5+ exposes styleHints().colorScheme(); the
-    colorSchemeChanged signal arrived in 6.8, and this app ships 6.11)
+  * a light and a dark palette, chosen from the OS preference by default and
+    re-applied live when it changes (Qt 6.5+ exposes styleHints().colorScheme();
+    the colorSchemeChanged signal arrived in 6.8, and this app ships 6.11) -
+    or pinned to one or the other via set_mode(), overriding the OS
   * semantic tokens - DANGER, SUCCESS, WARNING, ACCENT, MUTED - so a panel
     never names a colour directly
   * one stylesheet with the classes the panels use: hint, error, success,
@@ -26,11 +27,29 @@ _LIGHT = {
     "window": "#f4f6f8",
     "base": "#ffffff",
     "alt_base": "#eef1f5",
+    # Pure white rather than a near-window off-white: at #fafcfc a card was
+    # only ~1% brighter than the #f4f6f8 window behind it and read as an
+    # outlined box, not an elevated surface - the 1px border was doing all
+    # the work. Matches dark mode's own ordering, where card is the
+    # lightest of window/base/card, not squeezed between them.
+    "card": "#ffffff",
     "text": "#191c21",
     "muted": "#5c6470",
     "border": "#d5dae1",
-    "accent": "#2f6feb",
+    # Deep teal rather than a generic SaaS blue - it reads as instrument /
+    # data-tool rather than dashboard-product, and sits close to the
+    # viridis/magma families figure_theme.py already draws charts with.
+    # Darker than the dark-mode accent on purpose: white text/icons on this
+    # need to clear WCAG AA's 4.5:1 for normal text (this is QPalette's
+    # Highlight colour, so it also sits under every selected list/table row,
+    # not just buttons). #0f9488 only measured 3.74:1 - AA-failing - and was
+    # darkened until it cleared 5:1.
+    "accent": "#0c7d72",
     "accent_text": "#ffffff",
+    # accent darkened ~12%: QPushButton:hover on a primary button only
+    # changes border-color, which is already accent at rest, so hovering
+    # Run/Compare/Render/Load was invisible without a background to move to.
+    "accent_hover": "#0a6e64",
     "danger": "#b3261e",
     "success": "#1a7f4b",
     "warning": "#9a5b06",
@@ -41,11 +60,13 @@ _DARK = {
     "window": "#1b1e23",
     "base": "#22262d",
     "alt_base": "#272c34",
+    "card": "#262b32",
     "text": "#e6e9ed",
     "muted": "#9aa3b0",
     "border": "#343a44",
-    "accent": "#5d9bff",
+    "accent": "#2dd4bf",
     "accent_text": "#0d1117",
+    "accent_hover": "#27baa8",
     "danger": "#ef6f63",
     "success": "#43c07d",
     "warning": "#dca23c",
@@ -54,6 +75,19 @@ _DARK = {
 
 _current = dict(_LIGHT)
 _applied_to = None
+
+# "system" follows the OS live (the colorSchemeChanged connection below);
+# "light"/"dark" pin the palette regardless of what the OS reports. Persisted
+# and restored by gui/main_window.py's View > Appearance menu - theme.py
+# itself has no QSettings dependency, so it stays usable from the self-test
+# and from scripts that never build a MainWindow.
+_mode = "system"
+
+# Widget state that isn't covered by the app-wide QPalette/stylesheet - most
+# notably pre-rendered QIcons, which paint a colour baked in at creation time
+# and don't re-read tokens() on their own - registers here to be redone after
+# every refresh(), whether it was triggered by the OS or by set_mode().
+_on_change = []
 
 
 def tokens():
@@ -64,6 +98,38 @@ def tokens():
 
 def is_dark():
     return _current is not None and _current.get("window") == _DARK["window"]
+
+
+def mode():
+    """The current appearance mode: "system", "light", or "dark"."""
+    return _mode
+
+
+def set_mode(new_mode, app=None):
+    """Pin the palette to "light"/"dark", or "system" to follow the OS again."""
+    global _mode
+    if new_mode not in ("system", "light", "dark"):
+        raise ValueError(f"unknown appearance mode: {new_mode!r}")
+    _mode = new_mode
+    refresh(app)
+
+
+def on_change(callback):
+    """Run `callback` after every refresh() from now on (an OS scheme change
+    while mode is "system", or an explicit set_mode()). Does not call it
+    immediately - callers that need the current state should read tokens()
+    themselves first."""
+    _on_change.append(callback)
+
+
+def off_change(callback):
+    """Undo on_change(callback). This list is module-global, so anything
+    long-lived enough to register (a main window, not a short-lived dialog)
+    must also unregister when it's destroyed, or it accumulates one dead
+    callback per instance in any process that builds more than one (the
+    self-test and ad-hoc scripts both do)."""
+    if callback in _on_change:
+        _on_change.remove(callback)
 
 
 # -- applying ------------------------------------------------------------
@@ -94,14 +160,25 @@ def apply(app=None):
 
 
 def refresh(app=None):
-    """Re-read the OS colour scheme and restyle everything."""
+    """Re-apply the palette for the current mode() and restyle everything."""
     global _current
     app = app or QtWidgets.QApplication.instance()
     if app is None:
         return
-    _current = dict(_DARK if _prefers_dark() else _LIGHT)
+    dark = _prefers_dark() if _mode == "system" else _mode == "dark"
+    _current = dict(_DARK if dark else _LIGHT)
     app.setPalette(_build_palette(_current))
     app.setStyleSheet(stylesheet(_current))
+    for callback in list(_on_change):
+        try:
+            callback()
+        except RuntimeError:
+            # The Qt object behind a bound-method callback was deleted
+            # without going through off_change() first (deleteLater()'s
+            # actual C++ destruction is asynchronous, so this can outrace a
+            # destroyed-signal-based unregister by a frame or two). Drop it
+            # rather than let one dead callback block every other one.
+            _on_change.remove(callback)
 
 
 def _prefers_dark():
@@ -172,17 +249,21 @@ def stylesheet(t=None):
         background: {t['window']};
         border-color: {t['border']};
         border-bottom-color: {t['window']};
+        /* A real accent-coloured indicator on the active tab, rather than
+           font-weight alone carrying "this is the selected one". */
+        border-top: 2px solid {t['accent']};
+        padding-top: {SPACE_S - 1}px;
         color: {t['text']};
         font-weight: 600;
     }}
 
-    /* -- grouping ------------------------------------------------------ */
+    /* -- grouping: a flat "card" rather than a bare outline ------------- */
     QGroupBox {{
         border: 1px solid {t['border']};
-        border-radius: 6px;
-        margin-top: {SPACE_M}px;
-        padding: {SPACE_M}px {SPACE_S}px {SPACE_S}px {SPACE_S}px;
-        background: {t['base']};
+        border-radius: 8px;
+        margin-top: {SPACE_M + 2}px;
+        padding: {SPACE_M + 4}px {SPACE_M}px {SPACE_M}px {SPACE_M}px;
+        background: {t['card']};
     }}
     QGroupBox::title {{
         subcontrol-origin: margin;
@@ -195,8 +276,14 @@ def stylesheet(t=None):
         padding: 0 {SPACE_S}px;
         color: {t['muted']};
         font-weight: 600;
-        text-transform: none;
+        font-size: 10.5px;
     }}
+    /* Fusion's QGroupBox::title ignores CSS text-transform/letter-spacing
+       (verified by rendering one in isolation - it painted mixed-case with
+       no changes), so the small-caps section-label look is delivered by
+       gui/panels/layout.py's group_box() upper-casing the title string
+       instead. Panels must go through that helper, not QGroupBox directly,
+       or their title silently reverts to plain mixed case. */
     /* The output group decides whether a run overwrites real trajectories,
        so it is the one group that announces itself. */
     QGroupBox[class="destructive"] {{ border-color: {t['warning']}; }}
@@ -211,11 +298,27 @@ def stylesheet(t=None):
     }}
     QPushButton:hover {{ border-color: {t['accent']}; }}
     QPushButton:disabled {{ color: {t['disabled']}; border-color: {t['border']}; }}
+    /* Fusion's native dotted focus rect doesn't show up against a coloured
+       border, so a keyboard-focused button was visually identical to an
+       idle one. Drawn outside the border box (outline-offset) so it doesn't
+       fight with :hover/:default's own border-color changes. */
+    QPushButton:focus {{
+        outline: 2px solid {t['accent']};
+        outline-offset: 2px;
+    }}
     QPushButton:default, QPushButton[class="primary"] {{
         background: {t['accent']};
         color: {t['accent_text']};
         border-color: {t['accent']};
         font-weight: 600;
+    }}
+    /* The general QPushButton:hover rule only moves border-color, which is
+       already accent here at rest - primary buttons need their own hover
+       state or the app's highest-intent actions (Run/Compare/Render/Load)
+       are the only controls that give no hover feedback at all. */
+    QPushButton:default:hover, QPushButton[class="primary"]:hover {{
+        background: {t['accent_hover']};
+        border-color: {t['accent_hover']};
     }}
     QPushButton:default:disabled, QPushButton[class="primary"]:disabled {{
         background: {t['border']};
@@ -385,6 +488,8 @@ def heading_font(widget, delta=1):
 
 __all__ = [
     "SPACE_XS", "SPACE_S", "SPACE_M", "SPACE_L",
-    "apply", "refresh", "tokens", "is_dark", "stylesheet", "app_icon",
-    "restyle", "set_class", "monospace_font", "heading_font",
+    "apply", "refresh", "tokens", "is_dark", "mode", "set_mode",
+    "on_change", "off_change",
+    "stylesheet", "app_icon", "restyle", "set_class",
+    "monospace_font", "heading_font",
 ]

@@ -39,25 +39,48 @@ class CheckableList(QtWidgets.QListWidget):
 
     # -- contents --------------------------------------------------------
 
+    def _make_item(self, choice):
+        # A choice is either a bare value, or a (value, label) pair when the
+        # thing shown differs from the thing stored - opfunu functions are
+        # picked by name but recorded by integer id.
+        if isinstance(choice, tuple):
+            choice, label = choice
+        else:
+            label = str(choice)
+        item = QtWidgets.QListWidgetItem(label)
+        item.setData(VALUE_ROLE, choice)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        # The labels carry qualifiers the panes are too narrow to show, e.g.
+        # "Ackley   [dim 2, 5 only]".
+        item.setToolTip(label)
+        return item, choice
+
     def _fill(self, choices, chosen):
         for choice in choices:
-            # A choice is either a bare value, or a (value, label) pair when
-            # the thing shown differs from the thing stored - opfunu functions
-            # are picked by name but recorded by integer id.
-            if isinstance(choice, tuple):
-                choice, label = choice
-            else:
-                label = str(choice)
-            item = QtWidgets.QListWidgetItem(label)
-            item.setData(VALUE_ROLE, choice)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item, value = self._make_item(choice)
             item.setCheckState(
-                Qt.CheckState.Checked if choice in chosen else Qt.CheckState.Unchecked
+                Qt.CheckState.Checked if value in chosen else Qt.CheckState.Unchecked
             )
-            # The labels carry qualifiers the panes are too narrow to show,
-            # e.g. "Ackley   [dim 2, 5 only]".
-            item.setToolTip(label)
             self.addItem(item)
+
+    def add_choice(self, value, checked=True):
+        """Append one choice outside the fixed set the list was built with -
+        e.g. a seed value the user typed in, rather than one of config.SEEDS.
+
+        Re-checks the existing item instead of duplicating if `value` is
+        already present.
+        """
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for i in range(self.count()):
+            existing = self.item(i)
+            if existing.data(VALUE_ROLE) == value:
+                existing.setCheckState(state)
+                self.itemChanged.emit(existing)
+                return
+        item, _ = self._make_item(value)
+        item.setCheckState(state)
+        self.addItem(item)
+        self.itemChanged.emit(item)
 
     def values(self):
         return [

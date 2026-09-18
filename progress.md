@@ -1,98 +1,110 @@
 # Progress
 
-Working notes for the `desktop-gui` branch. Last updated 2026-09-18.
+Working notes for the "run the whole pipeline from the GUI" effort.
+Last updated 2026-09-18. **Status: done, merged, verified.**
 
 ## Where things stand
 
-Branch `desktop-gui`, pushed to origin. Last commit `7060ace` — "Theme the
-desktop GUI and let it run the analysis pipeline" (48 files, +4429/−484).
-Phase 5 (packaging) is done on top of that but **not yet committed**.
+All four PRs from `desktop-gui` are merged into `main`:
 
-| | |
+| PR | What | Merge commit |
+|---|---|---|
+| #1 | Desktop GUI (original) | `0e84bf3` |
+| #2 | Theme overhaul + pipeline runs from the GUI (Phases 1-4) | `36ee498` |
+| #3 | Phase 5 packaging + two CI-only test fixes | `f7e9c2b` |
+| #4 | Process-tab context line + trajectory dark-mode fix | `b725176` |
+
+`main` is at `b725176`. Nothing outstanding from the plan
+(`~/.claude/plans/how-do-i-use-spicy-cascade.md`) - all five phases done and
+verified.
+
+| Check | Result |
 |---|---|
-| Fast tests | 255 passing (was 176) |
-| `tests/smoke_test_pipeline.py` | passes — the CLI/subprocess path |
-| `tests/smoke_test_gui_pipeline.py` | passes — the in-process path + the Process tab |
-| `python -m gui --self-test` | passes, 7 tabs, 9 checks (was 8) |
-| Real `data/` / `metrics_data/` | untouched by any of this work |
+| `pytest tests/` | 259 passed |
+| `pytest tests/smoke_test_pipeline.py -v -s` | passes - CLI/subprocess path |
+| `pytest tests/smoke_test_gui_pipeline.py -v -s` | passes - in-process path + live Process tab |
+| `python -m gui --self-test` | passes, 7 tabs, 9 checks |
+| The real clustering re-run | **done** (see below) |
 
-## Done
+## What shipped
 
-**Visual overhaul.** `gui/theme.py` is now the only place colour, spacing and
-type are defined; it follows the OS light/dark preference. `gui/viz/figure_theme.py`
-does the same for matplotlib, applied at `Visualization.draw()` and inside
-`capture.render_with()`. Deliberately app-only — the scripts that write
-`figures_*/` keep their own look so the thesis figures stay consistent.
+**Visual overhaul.** `gui/theme.py` is the only place colour, spacing and
+type are defined; follows the OS light/dark preference.
+`gui/viz/figure_theme.py` does the same for matplotlib, applied at
+`Visualization.draw()` / `capture.render_with()` - app-only, so `figures_*/`
+output keeps its original look.
 
-**The pipeline runs from the GUI.** Every stage script exposes
-`run(progress_cb, cancel_event)` per the new `pipeline_api.py`, with `__main__`
-reduced to a one-line wrapper. `gui/core/pipeline.py` mirrors
-`run_pipeline.STEPS` and drives the stages in process; the Process tab runs
-them with per-file progress behind a confirmation naming every directory it
-overwrites and its current size. `run_pipeline.py` is untouched and still works.
+**The pipeline runs from the GUI, including when packaged.** Every stage
+script exposes `run(progress_cb, cancel_event)` per `pipeline_api.py`.
+`gui/core/pipeline.py` mirrors `run_pipeline.STEPS` and drives stages
+in-process (forced by packaging - a frozen app ships no interpreter to
+subprocess out to). The Process tab runs them with per-stage/per-item
+progress behind a confirmation naming every directory it will overwrite and
+its current size, and now also shows the active results folder, dimensions
+and clustering method up front, before you even tick a box.
+`packaging/gui.spec` bundles all 13 stage modules; `gui/self_test.py` checks
+they actually import in a built bundle.
 
-**~19 bugs fixed**, including two reproduced crashes (`set_frame(None)`;
-`config.FUNCTIONS.index(16)` taking out `MainWindow` construction) and the
-module-scope `parse_args()` in both `03_cluster/` scripts.
+**~21 bugs found and fixed** along the way, including two reproduced
+crashes (`DataFrameModel.set_frame(None)`; `config.FUNCTIONS.index(16)`
+taking out `MainWindow` construction), module-scope `parse_args()` in both
+`03_cluster/` scripts, a CI failure from two tests missing skip guards
+(`tqdm` not installed, `PySide6` not installed - CI intentionally installs
+neither), and dark-mode trajectory plots rendering black-on-black because
+`figure_theme.apply_to()` was only ever called once, before `axes.clear()`
+wiped the styling on every real redraw.
 
-## Done: Phase 5 — packaging
+## The clustering re-run
 
-The last item from the plan (`~/.claude/plans/how-do-i-use-spicy-cascade.md`)
-is done. In `packaging/gui.spec`:
+Done, via `python run_pipeline.py --from clustering` in a real terminal,
+2026-09-17 17:46-19:03 (confirmed by file mtimes across all three real
+dimensions - `data/clustering_latest/cluster_centers/dim_{2,5,10}`,
+`metrics_data/merged/spearman_dim_{2,5,10}.csv`, `metrics_data/scalars.csv`
+- and by the user's own manual check of `cluster_centers`). `config.CLUSTERING_SEED`
+is now in effect for this data, unlike the results it replaced. No
+`pipeline_run.json` exists for it, which is expected: that manifest is only
+written by the GUI's `PipelineRunner`, never by `run_pipeline.py`.
 
-- `01_optimize`, `02_preprocess`, `03_cluster` added to `pathex` (were
-  absent; only `04_metrics`/`05_analysis` were there before)
-- every stage module named in `hiddenimports`: `harvest_results`,
-  `preprocess_data`, `cluster_trajectories`, `cluster_similarity`,
-  `entropy`, `entropy_pairwise`, `cosine_pairwise`,
-  `cosine_columns_pairwise`, `exploration_pairwise`, `solutions_pairwise`,
-  `merge_metrics`, `build_scalars`, `spearman` (`entropy_plotting` and
-  `scalar_regression` were already there for the figure scripts).
-  `run_benchmarks` deliberately left out — the GUI drives it through
-  `helper_functions.run_benchmarks`, never imports that module.
-- `yellowbrick` and `kneed` removed from `excludes`
-- `gui/self_test.py` gained a check that imports every non-benchmark stage
-  in `pipeline.STAGES` and asserts `run` is callable — same trick as the
-  mealpy/opfunu checks: silent in a checkout, loud in a bundle missing a
-  module
+Before landing on the terminal re-run, the GUI path was also verified
+end-to-end against a disposable `PIPELINE_TEST_ROOT` temp tree (tiny
+2-algorithm/2-function sweep) through a live Process tab - this is what
+surfaced the persisted-`QSettings`-results-root bug (see below) and the
+black-text trajectory bug.
 
-`CLAUDE.md`'s Packaging section updated to match. Verified: fast suite (255,
-unchanged), `python -m gui --self-test` (now 9 checks, all pass, including
-the new one — imported all 13 non-benchmark stages successfully), both
-files byte-compile.
+## Bugs found via manual testing, beyond the plan's own scope
 
-**Not yet verified: an actual PyInstaller build.** This environment can't
-run PyInstaller/produce a Windows exe — that only happens in
-`.github/workflows/build-windows.yml`. Push and watch that workflow before
-calling packaging fully proven; a module resolving fine via `sys.path`
-in a checkout doesn't guarantee PyInstaller's static analysis found it via
-`pathex` the same way.
+- **`gui/main_window.py`'s `_restore_results_root()`** silently restores a
+  results folder from `QSettings`, persisted from any earlier session,
+  overriding `PIPELINE_TEST_ROOT` on every launch. Not fixed (arguably
+  correct behaviour for normal use), but worth remembering: a stale
+  persisted root can make the safe env-var testing path look broken. Clear
+  it with `rm ~/.config/OptimizerTrajectoryExplorer/gui.conf` if it happens
+  again.
+- **Trajectory panel dark-mode text** - see above, fixed in PR #4.
+- **Process tab gave no indication of what it would run against** until the
+  confirmation dialog appeared - fixed in PR #4 with a persistent context
+  line (results folder / dimensions / method) above the stage list.
 
-## Then: the clustering re-run
+## Docs
 
-The original goal. `data/clustering_latest/` (3.5 GB) was produced *before*
-`CLUSTERING_SEED` existed, i.e. unseeded. Regenerating it and everything
-downstream is `--from clustering`, or the Process tab ticked from Clustering.
+`CLAUDE.md`, `README.md` both updated to match everything above - the
+README's desktop-app section previously still said "the GUI does not run
+[clustering/metrics] - it shows you the commands instead", which stopped
+being true as of PR #2.
 
-- **No need to re-run the benchmark.** `helper_functions.run_benchmarks` has
-  always taken an explicit seed, so the 11 GB in `outputs/` is unaffected.
-- **Disk is fine.** No stage deletes and none writes alongside; files are
-  replaced one at a time, so peak transient overhead is one file (<20 MB), not
-  3.5 GB. Free space was 7.6 GB on a 90%-full disk.
-- **Back up first if it matters.** None of it is in git.
-  `data/clustering_latest/cluster_distributions/` (290 MB) plus `metrics_data/`
-  (281 MB) is ~570 MB and covers everything downstream without the 3.2 GB of
-  raw cluster assignments.
-- **Cancelling mid-stage leaves a mixed tree** — nothing is transactional and
-  `merge_metrics.py` merges whatever it finds. The Process tab says so.
+## Watch out for, going forward
 
-## Watch out for
-
-- Keep `run_pipeline.py` invoking the scripts as subprocesses.
-  `smoke_test_pipeline.py` passing unchanged is what proves the refactor did
-  not move the science.
+- Keep `run_pipeline.py` invoking the scripts as subprocesses -
+  `smoke_test_pipeline.py` passing unchanged is what proves any future
+  refactor doesn't move the science.
 - No `parse_args()` at module scope in a stage script.
-- No `pyplot` in a stage — `gui/qt.py` forces `QtAgg` and building a Qt canvas
-  off the worker thread crashes.
-- After a run call `results_root.invalidate_caches()`, not
-  `coverage.invalidate()` — the latter clears one memoised cache of four.
+- No `pyplot` in a stage - `gui/qt.py` forces `QtAgg`, and building a Qt
+  canvas off the worker thread crashes.
+- After any run, call `results_root.invalidate_caches()`, not
+  `coverage.invalidate()` - the latter clears one memoised cache of four.
+- After any figure redraw that touches an axes freshly `.clear()`'d, call
+  `figure_theme.apply_to(figure)` again - restyling doesn't survive a clear.
+- CI (`tests.yml`) installs only `pandas numpy pytest`. A new test that
+  imports a stage module or `gui.qt` needs the matching
+  `pytest.importorskip(...)` / skip-on-`ImportError` guard, or it'll pass
+  locally and fail in CI.

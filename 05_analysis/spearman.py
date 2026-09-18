@@ -36,7 +36,13 @@ def load_metric(metric, dim):
     for file in tqdm(sorted(os.listdir(dim_path)), desc=f'{metric}/dim_{dim}', leave=False):
         if not file.endswith('.csv'):
             continue
-        df = pd.read_csv(f'{dim_path}/{file}')
+        try:
+            df = pd.read_csv(f'{dim_path}/{file}')
+        except pd.errors.EmptyDataError:
+            # See merge_metrics.py's identical guard: a totally columnless
+            # file from a writer that found no valid pairs for this problem.
+            print(f"  [warn] {dim_path}/{file}: empty file, skipping")
+            continue
         if df.empty:
             continue
         frames.append(normalize_keys(df))
@@ -57,6 +63,12 @@ def build_merged(dim):
             present.append(m)
         else:
             print(f"  [warn] {m} missing for dim {dim}, skipping")
+    if not dfs:
+        # Every metric came back empty for this dimension (e.g. a narrow GUI
+        # run where no problem ever had two algorithms to pair up) -
+        # reduce() over an empty list has no initial value and raises
+        # TypeError; there is nothing to correlate either way.
+        return None, present
     # inner merge: keep only comparisons present in ALL metrics (clean for corr)
     merged = reduce(lambda l, r: pd.merge(l, r, on=KEYS, how='inner'), dfs)
     return merged, present
@@ -131,6 +143,10 @@ def run(progress_cb=None, cancel_event=None, dimensions=None):
             return result
         print(f"\n{'='*60}\nDIM {dim}\n{'='*60}")
         merged, present = build_merged(dim)
+        if merged is None:
+            print(f"  [warn] no metrics available for dim {dim} - nothing to correlate, skipping")
+            result.notes.append(f"dim {dim}: skipped, no metrics available")
+            continue
         print(f"merged shape: {merged.shape}")
         print(f"NaNs:\n{merged[present].isna().sum().to_dict()}")
 

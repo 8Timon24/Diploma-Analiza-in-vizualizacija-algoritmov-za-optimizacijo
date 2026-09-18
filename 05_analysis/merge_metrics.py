@@ -54,7 +54,18 @@ def run(progress_cb=None, cancel_event=None):
         for file in tqdm(sorted(os.listdir(dim_path)), desc=f'{metric}/{dim_folder}'):
             if not file.endswith('.csv'):
                 continue
-            df = pd.read_csv(f'{dim_path}/{file}')
+            try:
+                df = pd.read_csv(f'{dim_path}/{file}')
+            except pd.errors.EmptyDataError:
+                # A totally columnless file (0 bytes) - a writer upstream
+                # produced no rows for this problem (e.g. only one algorithm
+                # had data, so no pair could be formed) and, on an older
+                # version of this pipeline, wrote pd.DataFrame([]) as-is
+                # instead of a proper empty-but-headered CSV. Skip it rather
+                # than taking down the whole merge stage over one file with
+                # legitimately nothing to contribute.
+                print(f"  [warn] {dim_path}/{file}: empty file, skipping")
+                continue
             if df.empty:
                 continue
             df = normalize_keys(df)

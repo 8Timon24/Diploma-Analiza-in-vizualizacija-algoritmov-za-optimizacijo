@@ -103,7 +103,15 @@ def run(progress_cb=None, cancel_event=None, dimensions=None):
                            "Cosine_column_distance": distance}
                     rows.append(row)
 
-            result_frame = pd.DataFrame(rows)
+            # Explicit columns: rows can be legitimately empty (e.g. a
+            # problem/dimension where only one algorithm has data - no pair
+            # can be formed), and pd.DataFrame([]) has zero columns, which
+            # writes a file pandas itself can't read back
+            # (EmptyDataError: "No columns to parse from file") and crashed
+            # the merge stage on exactly that case.
+            columns = ["Algorithm1", "Algorithm2", "Function_id", "Instance_id",
+                       "Run_id", "Cosine_column_distance"]
+            result_frame = pd.DataFrame(rows, columns=columns)
             result_frame.to_csv(f'{output_dir}/cosine_columns/dim_{d}/{problem_name}.csv', index=False)
             result.written += 1
 

@@ -67,8 +67,18 @@ def run(progress_cb=None, cancel_event=None, dimensions=None):
                     rows_fitness.append(row_fit)
                     rows_location.append(row_loc)
 
-            result_fitness = pd.DataFrame(rows_fitness)
-            result_location = pd.DataFrame(rows_location)
+            # Explicit columns: rows can be legitimately empty (e.g. a
+            # problem/dimension where only one algorithm has data - no pair
+            # can be formed), and pd.DataFrame([]) has zero columns, which
+            # writes a file pandas itself can't read back
+            # (EmptyDataError: "No columns to parse from file") and crashed
+            # the merge stage on exactly that case.
+            fitness_columns = ["Algorithm1", "Algorithm2", "Function_id",
+                                "Instance_id", "Run_id", "Fitness_difference"]
+            location_columns = ["Algorithm1", "Algorithm2", "Function_id",
+                                 "Instance_id", "Run_id", "Location_difference"]
+            result_fitness = pd.DataFrame(rows_fitness, columns=fitness_columns)
+            result_location = pd.DataFrame(rows_location, columns=location_columns)
             result_fitness.to_csv(f'{output_dir}/fitness/dim_{d}/F{f}_I{i}.csv', index=False)
             result_location.to_csv(f'{output_dir}/location/dim_{d}/F{f}_I{i}.csv', index=False)
             result.written += 2

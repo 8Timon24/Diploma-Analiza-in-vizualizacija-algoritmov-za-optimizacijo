@@ -53,7 +53,15 @@ def run(progress_cb=None, cancel_event=None, dimensions=None):
                     res = np.abs(a1-a2).mean()
                     row = {"Algorithm1": alg1, "Algorithm2":alg2, "Function_id": f, "Instance_id": i, "Run_id": r, "Mean_entropy_difference": res}
                     rows.append(row)
-            result_frame = pd.DataFrame(rows)
+            # Explicit columns: rows can be legitimately empty (e.g. a
+            # problem/dimension where only one algorithm has data - no pair
+            # can be formed), and pd.DataFrame([]) has zero columns, which
+            # writes a file pandas itself can't read back
+            # (EmptyDataError: "No columns to parse from file") and crashed
+            # the merge stage on exactly that case.
+            columns = ["Algorithm1", "Algorithm2", "Function_id", "Instance_id",
+                       "Run_id", "Mean_entropy_difference"]
+            result_frame = pd.DataFrame(rows, columns=columns)
             result_frame.to_csv(f'{output_dir}/entropy/dim_{d}/F{f}_I{i}.csv', index=False)
             result.written += 1
 

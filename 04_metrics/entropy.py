@@ -77,8 +77,16 @@ def get_granular_entropy(input_dir, dimension,
         problem_entropy['dimension'] = dimension
         all_rows.append(problem_entropy)
 
+    # Explicit columns even when empty: a totally columnless pd.DataFrame()
+    # writes a CSV pandas itself can't read back later (EmptyDataError:
+    # "No columns to parse from file") - the same failure mode fixed in the
+    # pairwise metric writers, reached here if a dimension's cluster
+    # distributions yield zero entropy rows (e.g. nothing discovered, or
+    # every count summed to zero).
+    granular_columns = ['algorithm', 'problem_id', 'instance_id',
+                         'dimension', 'run', 'iteration', 'entropy']
     if not all_rows:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=granular_columns)
 
     granular = pd.concat(all_rows, ignore_index=True)
     # reorder columns to the natural identifying-keys-then-value order

@@ -276,11 +276,23 @@ directory is a results tree in its own right, so the raw-trajectory and
 exploration views work on it immediately; run the Process tab against it to
 get the entropy, cosine and Spearman views too.
 
-### Building the Windows executable
+### Getting the Windows executable
 
-PyInstaller cannot cross-compile, so the `.exe` is built on a Windows runner
-(`.github/workflows/build-windows.yml`, triggered by a `v*` tag or manually).
-To build locally on your own platform:
+Push a version tag (`git tag v0.1.0 && git push origin v0.1.0`) and
+`.github/workflows/build-windows.yml` builds it and attaches the zipped
+bundle to a GitHub Release under that tag - that Release page is what to
+hand someone who just wants to run the app, not the repository. Download
+the zip, extract it (the `.exe` needs its sibling DLLs and data files next
+to it - don't copy it out on its own), and run
+`OptimizerTrajectoryExplorer.exe`. It isn't code-signed, so Windows
+SmartScreen will flag it on first launch; click **More info > Run anyway**.
+
+Triggering the workflow manually (Actions tab > build-windows-exe > Run
+workflow) instead of via a tag builds the same thing but only uploads it as
+a 30-day workflow artifact, since there's no tag to name a Release after.
+
+PyInstaller cannot cross-compile, so the `.exe` is only ever built on a
+Windows runner - to build locally on your own Windows machine instead:
 
 ```bash
 pip install -r packaging/requirements-app.txt

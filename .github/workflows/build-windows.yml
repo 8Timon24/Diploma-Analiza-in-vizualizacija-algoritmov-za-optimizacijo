@@ -11,6 +11,11 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    # Only needed to publish a GitHub Release on a tag push (softprops/
+    # action-gh-release below); the default token wouldn't otherwise have
+    # write access.
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -44,8 +49,27 @@ jobs:
         shell: bash
         run: du -sh dist/OptimizerTrajectoryExplorer
 
+      # Kept for workflow_dispatch runs (no tag, so no release below) and
+      # for grabbing a build without waiting on a release to be cut. Only
+      # reachable from the Actions tab by someone with repo access, and
+      # expires after 30 days - the release below is the durable, shareable
+      # download.
       - uses: actions/upload-artifact@v4
         with:
           name: OptimizerTrajectoryExplorer-windows
           path: dist/OptimizerTrajectoryExplorer
           retention-days: 30
+
+      # A tag push (v*) is the only trigger with a version to name a release
+      # after, so the release step is skipped on a plain workflow_dispatch
+      # run instead of publishing an unversioned one.
+      - name: Zip the build for release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: Compress-Archive -Path dist/OptimizerTrajectoryExplorer -DestinationPath OptimizerTrajectoryExplorer-windows.zip
+
+      - name: Publish a GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: OptimizerTrajectoryExplorer-windows.zip
+          generate_release_notes: true

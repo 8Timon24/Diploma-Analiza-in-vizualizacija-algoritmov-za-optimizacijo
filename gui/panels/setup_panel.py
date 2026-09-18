@@ -6,6 +6,7 @@ run_benchmarks writes by algorithm and problem id - so pointing a run at the
 repo's real outputs/ can overwrite existing trajectories in place. Sandbox is
 the default and switching away from it requires confirming.
 """
+from gui import icons, theme
 from gui.panels import layout as panel_layout
 from gui.qt import QtWidgets, Qt, Signal
 from gui.core import coverage as coverage_core
@@ -42,7 +43,7 @@ class SetupPanel(QtWidgets.QWidget):
         self.picker.selectionChanged.connect(self.selectionChanged)
         self.picker.selectionChanged.connect(lambda _names: self._refresh_estimate())
 
-        optimizers_box = QtWidgets.QGroupBox("Optimizers")
+        optimizers_box = panel_layout.group_box("Optimizers")
         QtWidgets.QVBoxLayout(optimizers_box).addWidget(self.picker)
 
         right = panel_layout.column(margins=(0, 0, panel_layout.S, 0))
@@ -80,7 +81,7 @@ class SetupPanel(QtWidgets.QWidget):
     # -- construction ----------------------------------------------------
 
     def _build_problem_box(self):
-        box = QtWidgets.QGroupBox("Benchmark problems")
+        box = panel_layout.group_box("Benchmark problems")
         form = panel_layout.form(box)
 
         self.source_combo = QtWidgets.QComboBox()
@@ -125,11 +126,44 @@ class SetupPanel(QtWidgets.QWidget):
         form.addRow("Functions:", _with_note(self.functions, self.function_note))
         form.addRow("Instances:", _with_note(self.instances, self.instance_note))
         form.addRow("Dimensions:", self.dimensions)
-        form.addRow("Seeds:", self.seeds)
+        form.addRow("Seeds:", self._build_seeds_field())
         return box
 
+    def _build_seeds_field(self):
+        # config.SEEDS ([1..5]) is what the stored real results were run
+        # with, not a hard limit - mealpy seeds numpy's default_rng with it
+        # (optimizer.py), which accepts any non-negative integer, so this
+        # lets a run reach for seeds beyond the checklist rather than being
+        # stuck with just those five.
+        self.custom_seed = QtWidgets.QSpinBox()
+        self.custom_seed.setRange(0, 2_147_483_647)
+        self.custom_seed.setValue(max(config.SEEDS, default=0) + 1)
+        add_seed = QtWidgets.QPushButton("Add")
+        add_seed.setToolTip("Add this seed to the list above and check it")
+        add_seed.clicked.connect(self._add_custom_seed)
+
+        add_row = panel_layout.row(margins=0)
+        add_row.addWidget(self.custom_seed)
+        add_row.addWidget(add_seed)
+        add_row.addStretch()
+
+        host = QtWidgets.QWidget()
+        layout = panel_layout.column(host, margins=0, spacing=2)
+        layout.addWidget(self.seeds)
+        layout.addLayout(add_row)
+        layout.addWidget(panel_layout.note(
+            "A seed fixes the initial population and every random step of "
+            "the search, so the same seed reproduces the same run. Any "
+            "whole number ≥ 0 works - add more for extra independent runs."
+        ))
+        return host
+
+    def _add_custom_seed(self):
+        self.seeds.add_choice(self.custom_seed.value())
+        self.custom_seed.setValue(self.custom_seed.value() + 1)
+
     def _build_custom_box(self):
-        self.custom_box = QtWidgets.QGroupBox("Your function")
+        self.custom_box = panel_layout.group_box("Your function")
         form = panel_layout.form(self.custom_box)
 
         self.custom_expression = QtWidgets.QLineEdit("sum(x**2)")
@@ -297,7 +331,7 @@ class SetupPanel(QtWidgets.QWidget):
         return True
 
     def _build_parameter_box(self):
-        box = QtWidgets.QGroupBox("Run parameters")
+        box = panel_layout.group_box("Run parameters")
         form = QtWidgets.QFormLayout(box)
 
         self.epoch_per_dim = QtWidgets.QSpinBox()
@@ -328,7 +362,7 @@ class SetupPanel(QtWidgets.QWidget):
         return box
 
     def _build_output_box(self):
-        box = QtWidgets.QGroupBox("Output")
+        box = panel_layout.group_box("Output")
         # The one group whose wrong setting destroys data: run_benchmarks
         # writes by algorithm and problem id, so pointing a run at the real
         # outputs/ overwrites existing trajectories in place. It gets a
@@ -369,7 +403,8 @@ class SetupPanel(QtWidgets.QWidget):
         self.warning.setProperty("class", "warning")
         self.warning.hide()
 
-        self.run_button = QtWidgets.QPushButton("Run benchmark")
+        self.run_button = QtWidgets.QPushButton(
+            icons.icon("play", theme.tokens()["accent_text"]), "Run benchmark")
         self.run_button.setProperty("class", "primary")
         self.run_button.setDefault(True)
         self.run_button.setShortcut("Ctrl+Return")
@@ -382,6 +417,12 @@ class SetupPanel(QtWidgets.QWidget):
         return box
 
     # -- state -----------------------------------------------------------
+
+    def refresh_icons(self):
+        """Redo icons that were baked in as pixmaps at construction time and
+        so don't follow a live theme.on_change() the way the stylesheet
+        does. Called by MainWindow after an explicit appearance switch."""
+        self.run_button.setIcon(icons.icon("play", theme.tokens()["accent_text"]))
 
     def set_registry(self, registry):
         self.picker.set_registry(registry)

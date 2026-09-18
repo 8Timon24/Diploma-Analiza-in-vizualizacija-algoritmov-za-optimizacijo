@@ -4,7 +4,7 @@
 Build:   pyinstaller packaging/gui.spec --noconfirm
 Verify:  dist/OptimizerTrajectoryExplorer/OptimizerTrajectoryExplorer --self-test
 
-Four things here are load-bearing; each one produces a bundle that starts
+Five things here are load-bearing; each one produces a bundle that starts
 cleanly and then fails at runtime if it is dropped.
 
 1. collect_submodules('mealpy')
@@ -30,6 +30,13 @@ cleanly and then fails at runtime if it is dropped.
    are not importable as packages. Naming them here is what puts them in the
    bundle - without it the Process tab starts fine and fails the moment a
    stage runs.
+
+5. gui/assets/icons/*.svg
+   gui/icons.py reads these from disk by path (Path(__file__).parent /
+   "assets" / "icons"), not through an import, so PyInstaller's static
+   analysis cannot see the dependency at all. Without this entry the bundle
+   starts fine and every tab/button silently loses its icon the first time
+   gui.icons.icon() is called.
 
 PyQt6 is excluded deliberately: it is installed in the dev venv as a
 matplotlib backend, and shipping two Qt bindings in one process is a
@@ -75,6 +82,9 @@ hidden += [
 
 # -- 2. opfunu CEC support data
 datas = collect_data_files("opfunu")
+
+# -- 5. bundled icon svgs, read from disk at runtime rather than imported
+datas += [(str(REPO_ROOT / "gui" / "assets" / "icons"), "gui/assets/icons")]
 
 # -- 3. cocoex: compiled extension + its data
 cocoex_datas, cocoex_binaries, cocoex_hidden = collect_all("cocoex")

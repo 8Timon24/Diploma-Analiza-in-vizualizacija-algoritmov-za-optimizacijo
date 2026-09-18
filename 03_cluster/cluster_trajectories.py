@@ -14,6 +14,7 @@ import matplotlib.patches as mpatches
 from sklearn.metrics.pairwise import cosine_similarity
 import seaborn as sns
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 from utils import *
 from sklearn.cluster import KMeans, DBSCAN, OPTICS
 from sklearn.datasets import make_blobs
@@ -91,7 +92,17 @@ def determine_number_of_clusters(X):
         # data to cluster meaningfully either way; cap at what exists.
         return max(1, min(4, n_samples))
 
-    visualizer = KElbowVisualizer(model, k=cluster_options)
+    # KElbowVisualizer.fit() always ends by calling draw(), which touches
+    # self.ax - and yellowbrick lazily resolves that to pyplot's plt.gca()
+    # if no axis was given. This stage runs on the Process tab's worker
+    # thread, and gui/qt.py forces the QtAgg backend, so plt.gca() there
+    # tries to create a QWidget off the Qt GUI thread and deadlocks (0% CPU,
+    # cancel button unresponsive since the hang is inside a C-level Qt
+    # call). Handing it a bare, pyplot-free axis avoids ever touching
+    # pyplot's global state - same fix as 05_analysis/spearman.py.
+    fig = Figure()
+    ax = fig.subplots()
+    visualizer = KElbowVisualizer(model, k=cluster_options, ax=ax, fig=fig)
     visualizer.fit(X)
     #visualizer.show()
 

@@ -214,3 +214,45 @@ def test_run_panel_reports_a_failed_start():
     body = source.read_text().split("def _on_failed")[1].split("\n    def ")[0]
     assert "runFinished.emit" in body
     assert "results_root.invalidate_caches()" in body
+
+
+# -- 6. every trajectory redraw must be restyled, not just the first one ---
+#
+# "when you generate a trajectory image the text at the top turns black"
+#   figure_theme.apply_to() was only ever called once, at TrajectoryPanel
+#   construction, before any problem was loaded. Loading one calls
+#   _draw_background(), which does axes.clear() - that recreates the title
+#   (and the legend, spines, facecolor...) as fresh matplotlib-default
+#   artists, black text included, and nothing restyled them again afterward.
+
+def test_trajectory_title_is_restyled_on_every_frame(monkeypatch):
+    pytest.importorskip("PySide6")
+    from gui.qt import QtWidgets
+    from gui import theme
+    from gui.panels import trajectory_panel
+
+    monkeypatch.setattr(theme, "_current", theme._DARK)
+    QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    panel = trajectory_panel.TrajectoryPanel()
+
+    # axes.clear() is what _draw_background() does on every load - it is
+    # the actual point where matplotlib resets the title to its own
+    # black-by-default styling, not set_title() itself.
+    panel.axes.clear()
+    panel._selection = pd.DataFrame({
+        "iteration": [1], "x0": [0.0], "x1": [0.0], "algorithm": ["A"],
+    })
+    panel._iterations = (1, 1)
+    panel._function, panel._instance, panel._run = 1, 1, 1
+    panel._trail = panel.axes.scatter([], [])
+    panel._cluster_scatter = None
+    panel._scatters = {}
+
+    panel._update_frame(1)
+
+    import matplotlib.colors as mcolors
+
+    assert panel.axes.title.get_color() != "black"
+    assert mcolors.to_rgba(panel.axes.title.get_color()) == mcolors.to_rgba(
+        theme.tokens()["text"]
+    )

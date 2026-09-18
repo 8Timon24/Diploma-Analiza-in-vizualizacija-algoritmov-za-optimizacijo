@@ -95,11 +95,36 @@ class PipelinePanel(JobPanel):
         layout.addWidget(splitter)
 
         self._select_from(DEFAULT_START)
+        self.refresh()
 
     # -- construction ----------------------------------------------------
 
+    def refresh(self):
+        """Re-read what this panel would run against.
+
+        Nothing here reacts to results_root.set_root() on its own - the main
+        window calls this alongside data_panel.refresh() and viz_panel.refresh()
+        whenever the results folder changes (File > Open results folder..., a
+        restored setting at startup, or the default reset), so this label
+        never shows a stale folder.
+        """
+        dims = ", ".join(str(d) for d in config.DIMENSIONS)
+        self.context.setText(
+            f"Results folder: {results_root.current_root()}\n"
+            f"Dimensions: {dims}   -   Clustering method: kmeans\n"
+            f"Algorithms are not filtered here - every stage processes "
+            f"whatever algorithms already have data in that folder."
+        )
+
     def _build_controls(self):
         box = QtWidgets.QGroupBox("Stages")
+
+        # What this panel would actually run against, visible before a single
+        # box is ticked. "Results folder: <checkout>" in the log after
+        # clicking Run used to be the only place this showed up.
+        self.context = QtWidgets.QLabel()
+        self.context.setWordWrap(True)
+        self.context.setProperty("class", "hint")
 
         self.start_from = QtWidgets.QComboBox()
         for stage in pipeline_core.STAGES:
@@ -143,6 +168,7 @@ class PipelinePanel(JobPanel):
         self.run_button.clicked.connect(self._request_run)
 
         form = panel_layout.column(box)
+        form.addWidget(self.context)
         form.addWidget(QtWidgets.QLabel("Start from:"))
         form.addWidget(self.start_from)
         form.addWidget(self.stage_list, 1)

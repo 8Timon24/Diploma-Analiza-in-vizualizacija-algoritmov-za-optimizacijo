@@ -80,6 +80,36 @@ python 01_optimize/run_benchmarks.py -a OriginalGWO -f 1 -d 2 -i 1 -s 1   # smal
 python 03_cluster/cluster_trajectories.py -c kmeans
 ```
 
+### Every step, run directly
+
+The exact command `run_pipeline.py` runs for each step (from `STEPS` in
+`run_pipeline.py`), in order:
+
+| Step | Command | Produces |
+|---|---|---|
+| `benchmark` | `python 01_optimize/run_benchmarks.py -p a -e` | raw per-run trajectories in `outputs/` |
+| `harvest_results` | `python 01_optimize/harvest_results.py` | `outputs/dim_{d}/results.csv` |
+| `preprocess` | `python 02_preprocess/preprocess_data.py` | `data/processed/dim_{d}/F{f}_I{i}.csv` |
+| `clustering` | `python 03_cluster/cluster_trajectories.py -c kmeans` | `data/clustering_latest/{cluster_centers,cluster_distributions,clustering_results}` |
+| `aggregate_cosine` | `python 03_cluster/cluster_similarity.py -c kmeans` | aggregate cosine similarity, for the clustermap figures |
+| `entropy_calc` | `python 04_metrics/entropy.py` | cluster-occupancy entropy (granular + aggregated) |
+| `entropy_pairwise` | `python 04_metrics/entropy_pairwise.py` | pairwise entropy-difference metric |
+| `cosine_pairwise` | `python 04_metrics/cosine_pairwise.py` | pairwise global cosine distance |
+| `cosine_columns_pairwise` | `python 04_metrics/cosine_columns_pairwise.py` | pairwise per-cluster-column cosine distance |
+| `exploration_pairwise` | `python 04_metrics/exploration_pairwise.py` | pairwise exploration/exploitation difference |
+| `solutions_pairwise` | `python 04_metrics/solutions_pairwise.py` | pairwise location/fitness difference |
+| `merge` | `python 05_analysis/merge_metrics.py` | `metrics_data/merged/merged_dim_{d}.csv` |
+| `build_scalars` | `python 05_analysis/build_scalars.py` | `metrics_data/scalars.csv` |
+| `spearman` | `python 05_analysis/spearman.py` | `metrics_data/merged/spearman_dim_{d}.csv`, `figures_spearman/` |
+
+Two more scripts aren't `run_pipeline.py` steps - run them manually after
+their dependency:
+
+| Command | Needs | Produces |
+|---|---|---|
+| `python 04_metrics/entropy_plotting.py` | `entropy_calc` | entropy figures in `figures_entropy/` |
+| `python 05_analysis/scalar_regression.py` | `build_scalars` | `figures_results/scalar_regression.png` (see [below](#regression-over-per-algorithm-scalars)) |
+
 ## Pipeline stages
 
 Scripts live in numbered folders that mirror the execution order:
@@ -140,6 +170,31 @@ Note it deliberately regresses the *scalars*, not averaged pairwise distances: f
 difference-type metric, averaging over partners is V-shaped in the underlying scalar, so it
 measures atypicality rather than magnitude (see the module docstring).
 
+## Exploratory notebooks
+
+`05_analysis/` also holds the notebooks used to build and sanity-check the
+analysis above - `run_pipeline.py` doesn't run them, and nothing downstream
+depends on their output. Open them with `jupyter lab 05_analysis/` (or via
+an editor's notebook support) from anywhere; each one's **first cell is a
+"repo-root bootstrap"** that `os.chdir`s up to the repo root and puts it on
+`sys.path`, since Jupyter's own working directory is the notebook's folder
+and every path in these notebooks (`data/...`, `metrics_data/...`) assumes
+the repo root. Always run that cell first.
+
+| Notebook | What it's for |
+|---|---|
+| `3_cluster_analysis.ipynb` | Plot the raw population trajectories for a chosen set of dimensions/problems/algorithms/runs, coloured by cluster |
+| `4_example_visualize_trajectories_for_clustering.ipynb` | Worked example of visualizing a problem's landscape and trajectories, from setting up the clustering input |
+| `entropy_notebook.ipynb` | One example of each entropy plot type (`04_metrics/entropy_plotting.py`), with algorithm filtering |
+| `exploration_plots_preview.ipynb` | Exploration/exploitation curves compared across algorithms |
+| `location_fitness_preview.ipynb` | Final-solution location and fitness compared against the true BBOB optimum |
+| `pari_algoritmov_metrike_heatmap.ipynb` | Pairwise-metric heatmap and table for eyeballing which measures agree, ahead of the automated Spearman step |
+
+They're large (one is several MB with embedded plot output) - if you're
+editing one programmatically rather than through Jupyter, load it with
+`json.load`/`json.dump(..., indent=1, ensure_ascii=False)` plus a trailing
+newline rather than a text editor, to keep the diff to just your change.
+
 ## The desktop app
 
 A PySide6 GUI over the same pipeline: pick optimizers and benchmark functions,
@@ -151,12 +206,13 @@ python -m gui                 # from the repo root, in the venv
 python -m gui --self-test     # headless checks, no window; used by the build CI
 ```
 
-Six tabs:
+Seven tabs:
 
 | Tab | What it does |
 | --- | --- |
 | Setup | Pick from all 234 mealpy optimizers and a benchmark source, with a live cost estimate |
 | Run | Progress, live convergence plot, streaming log, cancel |
+| Process | Run clustering and every metric stage - the rest of the pipeline after the benchmark - without a terminal |
 | Visualize | 20 visualizations, 13 of them previously reachable only by running a notebook |
 | Trajectory | Animated 2-D search playback over the true landscape, with GIF export |
 | Compare | Two algorithms head to head across all six pairwise metrics |
@@ -166,32 +222,60 @@ Benchmark sources: **BBOB** (24 functions x 110 instances via COCO), **opfunu**
 (125 classic functions), the **CEC** suites (cec2005-cec2022), and a
 **user-defined** expression.
 
-### It does not touch your results
+### It does not touch your results by accident
 
-Runs are written to `gui_runs/<timestamp>/` with a `manifest.json` recording
-the exact selection, library versions and clustering seed. Writing into the
-repository's real `outputs/` is possible but requires confirming a dialog that
-says what will be overwritten. Rendering a figure never writes to any
-`figures_*/` directory - the pipeline's plotting functions call `savefig` with
-hardcoded paths, so the GUI disables `savefig` while rendering and exporting is
-a separate, explicit action.
+Benchmark runs (the Run tab) are written to `gui_runs/<timestamp>/` with a
+`manifest.json` recording the exact selection, library versions and
+clustering seed - never into the repository's real `outputs/` unless you
+explicitly confirm that in the Setup tab. Rendering a figure never writes to
+any `figures_*/` directory - the pipeline's plotting functions call `savefig`
+with hardcoded paths, so the GUI disables `savefig` while rendering, and
+exporting a figure is a separate, explicit action.
+
+The Process tab is the one place that *does* write into the real `data/` and
+`metrics_data/` in place - see below - and it never does so without you
+confirming exactly what will be overwritten.
 
 If a visualization needs data that does not exist yet, the app says exactly
-what is missing, estimates what it would cost, and offers to prefill the run
-form with that selection.
+what is missing, estimates what it would cost, and offers to run those
+stages for you (or, for the benchmark, prefills the Run form with that
+selection).
+
+### Running the pipeline from the app
+
+The **Process** tab runs every stage after the benchmark - preprocessing,
+clustering, all six pairwise metrics, merging, scalars, Spearman - in the
+running app itself, no terminal needed. Tick individual stages, or use
+"start from" to tick a stage and everything after it (the same thing
+`run_pipeline.py --from <step>` does on the command line - the two agree on
+step names and order). Two progress bars track overall progress and the
+current stage's; Cancel stops at the next item boundary.
+
+It writes into the real `data/` and `metrics_data/` in place, the same as
+running the steps from a terminal, so clicking Run asks you to confirm first
+- naming every directory it's about to overwrite and its current size. Runs
+are not transactional and nothing is deleted first, so cancelling part-way
+leaves a mix of old and new files; the confirmation and the log both say so.
+A `pipeline_run.json` is written next to the results afterward, recording
+which stages ran, how long, and the clustering seed in effect.
+
+This is also what makes a **packaged build** self-contained: it ships no
+Python interpreter, so `run_pipeline.py`'s subprocess-per-step approach isn't
+available there - the Process tab imports each stage module and calls it
+in-process instead, which is why it exists.
 
 ### Pointing it at your results
 
-**File > Open results folder...** switches which tree the app reads
-(`outputs/`, `data/`, `metrics_data/`), and the choice is remembered. This is
-what makes the packaged app useful on a machine without the repository, and
-the Data tab header always states which folder is active and what it contains.
+**File > Open results folder...** switches which tree the app reads and
+writes (`outputs/`, `data/`, `metrics_data/`), and the choice is remembered.
+This is what makes the packaged app useful on a machine without the
+repository, and the Data tab header always states which folder is active and
+what it contains.
 
 **File > Open a run from this app...** opens one of your own runs. A run
 directory is a results tree in its own right, so the raw-trajectory and
-exploration views work on it immediately. The entropy, cosine and Spearman
-views need the clustering and metric stages, which the GUI does not run - it
-shows you the commands instead.
+exploration views work on it immediately; run the Process tab against it to
+get the entropy, cosine and Spearman views too.
 
 ### Building the Windows executable
 
@@ -213,13 +297,17 @@ need ~1190 bundled data files; and cocoex is a compiled C extension.
 ## Tests
 
 ```bash
-pytest tests/                          # fast unit tests, ~0.4s, no real data needed
-pytest tests/smoke_test_pipeline.py    # end-to-end: the whole pipeline on a tiny sweep
+pytest tests/                             # fast unit + GUI tests, ~10s, no real data needed
+pytest tests/smoke_test_pipeline.py -v -s       # end-to-end via subprocess, real pipeline
+pytest tests/smoke_test_gui_pipeline.py -v -s   # the same, but in-process through the app
 ```
 
-The smoke test runs all 14 steps for real (2 algorithms, 2 functions, one dimension) in an
-isolated temporary directory, so it never touches your actual results. It is deliberately
-named so `pytest tests/` does not pick it up.
+Both smoke tests run all 14 steps for real (2 algorithms, 2 functions, one dimension) in an
+isolated temporary directory, so neither ever touches your actual results. The first runs
+each step the way `run_pipeline.py` does, as a subprocess; the second drives the same sweep
+through `gui/core/pipeline.py` - the code the Process tab uses - including one test that
+starts a real `QThread` and exercises the Process tab itself. Both are deliberately not
+named `test_*.py`, so `pytest tests/` does not pick them up and they must be run explicitly.
 
 ## A note on reproducibility
 

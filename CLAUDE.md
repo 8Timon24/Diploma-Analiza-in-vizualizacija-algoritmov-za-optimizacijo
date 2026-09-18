@@ -245,14 +245,22 @@ produces a bundle that starts fine and then fails at runtime if dropped:
    launches with an empty optimizer list.
 2. `collect_data_files("opfunu")` - ~1190 CEC shift/rotation matrices.
 3. `collect_all("cocoex")` - compiled C extension plus data.
-4. `04_metrics`/`05_analysis` on `pathex` with their modules named in
-   `hiddenimports` - `gui/viz/registry.py` imports them by name at runtime,
-   since a directory called `04_metrics` is not an importable package.
+4. Every numbered stage folder (`01_optimize` through `05_analysis`) on
+   `pathex`, with each stage module named in `hiddenimports` - both
+   `gui/core/pipeline.py` (the Process tab, one entry per pipeline stage) and
+   `gui/viz/registry.py` (`entropy_plotting`, `scalar_regression`) import
+   these by name at runtime, since a directory called `04_metrics` is not an
+   importable package.
 
 `pyarrow` is excluded in favour of `fastparquet` (same files, ~137 MB smaller)
 and `PyQt6` is excluded so two Qt bindings never land in one process.
-`python -m gui --self-test` checks all of the above and is what CI runs against
-the built exe.
+`yellowbrick` and `kneed` are **not** excluded, unlike most notebook-only
+extras - `03_cluster/cluster_trajectories.py` imports both for its
+elbow-method k selection, and the Process tab runs that stage in the
+packaged app now.
+`python -m gui --self-test` checks all of the above, including that every
+stage module in `gui.core.pipeline.STAGES` actually imports and exposes a
+callable `run`, and is what CI runs against the built exe.
 
 ## Testing
 

@@ -9,9 +9,14 @@ PyInstaller cannot trace two things this app depends on:
   * opfunu's CEC suites load ~1190 bundled shift/rotation data files. Without
     collect_data_files('opfunu') the catalog looks right and every CEC
     function fails the moment it is evaluated.
+  * gui/core/pipeline.py's Process tab imports each stage module (e.g.
+    cluster_trajectories, merge_metrics) by name at runtime from its numbered
+    stage folder. A module missing from packaging/gui.spec's pathex/
+    hiddenimports starts the bundle fine and only fails when that stage runs.
 
-Both failures are silent and only appear on the machine the exe ships to, so
-they are checked explicitly here and run against the built artifact in CI.
+All three failures are silent and only appear on the machine the exe ships
+to, so they are checked explicitly here and run against the built artifact
+in CI.
 """
 import sys
 import traceback
@@ -155,6 +160,27 @@ def run():
         return f"{len(runs)} run(s) in the workspace, roots={roots or ['(none yet)']}"
 
     results.append(_check("data browser sees workspace runs", browser_sees_runs))
+
+    def pipeline_stages_importable():
+        """packaging/gui.spec names every stage module in hiddenimports by
+        hand - a missing or renamed one starts the bundle fine and only fails
+        the moment someone clicks Run on the Process tab, on a machine with
+        no checkout to fall back on."""
+        from gui.core import pipeline as pipeline_core
+
+        checked = []
+        for stage in pipeline_core.STAGES:
+            if stage.needs_run_spec:
+                # "benchmark" is driven through helper_functions.run_benchmarks
+                # directly, never through pipeline.load_stage().
+                continue
+            runner = pipeline_core.load_stage(stage)
+            if not callable(runner):
+                raise RuntimeError(f"{stage.module}.run is not callable")
+            checked.append(stage.name)
+        return f"{len(checked)} stage(s): {', '.join(checked)}"
+
+    results.append(_check("every pipeline stage module imports", pipeline_stages_importable))
 
     def qt_window():
         """Build the real window and let its startup work finish.

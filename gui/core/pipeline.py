@@ -180,7 +180,7 @@ class PipelineSpec:
 
     def describe(self):
         names = [s.label for s in self.runnable()]
-        dims = self.dimensions or config.DIMENSIONS
+        dims = self.dimensions or config.discover_dimensions(config.OUTPUTS_DIR)
         return (f"{len(names)} stage(s): {', '.join(names)}\n"
                 f"dimensions {', '.join(str(d) for d in dims)}")
 
@@ -284,8 +284,9 @@ class PipelineRunner(QtCore.QThread):
         # Only pass what a stage accepts: merge_metrics has no dimensions
         # argument because it discovers them from the filesystem.
         parameters = inspect.signature(runner).parameters
-        if self.spec.dimensions is not None and "dimensions" in parameters:
-            kwargs["dimensions"] = self.spec.dimensions
+        if "dimensions" in parameters:
+            kwargs["dimensions"] = self.spec.dimensions or config.discover_dimensions(
+                config.OUTPUTS_DIR)
         if "method" in parameters:
             kwargs["method"] = self.spec.method
         return runner(**kwargs)

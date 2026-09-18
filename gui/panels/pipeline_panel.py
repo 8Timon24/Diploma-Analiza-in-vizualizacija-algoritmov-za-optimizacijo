@@ -112,7 +112,7 @@ class PipelinePanel(JobPanel):
         restored setting at startup, or the default reset), so this label
         never shows a stale folder.
         """
-        dims = ", ".join(str(d) for d in config.DIMENSIONS)
+        dims = ", ".join(str(d) for d in config.discover_dimensions(config.OUTPUTS_DIR))
         self.context.setText(
             f"Results folder: {results_root.current_root()}\n"
             f"Dimensions: {dims}   -   Clustering method: kmeans\n"
@@ -264,7 +264,7 @@ class PipelinePanel(JobPanel):
         slow = [s.label for s in runnable if s.slow]
         self.summary.setText(
             f"{len(runnable)} stage(s), dimensions "
-            f"{', '.join(str(d) for d in config.DIMENSIONS)}."
+            f"{', '.join(str(d) for d in config.discover_dimensions(config.OUTPUTS_DIR))}."
         )
 
         notes = []

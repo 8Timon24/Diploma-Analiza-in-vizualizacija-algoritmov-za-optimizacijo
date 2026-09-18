@@ -151,6 +151,30 @@ def discover_seeds(directory, prefix):
     return sorted(seeds)
 
 
+def discover_dimensions(directory, fallback=None):
+    """Dimensions actually present as dim_{d} subdirectories of `directory`.
+
+    Same reasoning as discover_seeds: DIMENSIONS is what a fresh benchmark
+    sweep defaults to, not a guarantee about what's on disk - a GUI run's
+    Setup tab lets any subset of dimensions be benchmarked, and the Process
+    tab used to always process exactly DIMENSIONS regardless, crashing on
+    os.listdir() the moment one of them (e.g. 5 or 10 out of the default
+    [2, 5, 10]) was never generated.
+
+    Falls back to `fallback` (typically DIMENSIONS) if `directory` doesn't
+    exist yet or has no dim_* subdirectories - e.g. before any benchmark has
+    run - so an empty tree doesn't silently resolve to "process nothing."
+    """
+    pattern = re.compile(r"^dim_(\d+)$")
+    dims = set()
+    if os.path.isdir(directory):
+        for name in os.listdir(directory):
+            match = pattern.match(name)
+            if match and os.path.isdir(f"{directory}/{name}"):
+                dims.add(int(match.group(1)))
+    return sorted(dims) if dims else list(fallback if fallback is not None else DIMENSIONS)
+
+
 def normalize_keys(df):
     """Coerce Function_id/Instance_id/Run_id to plain ints.
 

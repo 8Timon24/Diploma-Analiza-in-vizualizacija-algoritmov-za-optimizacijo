@@ -7,20 +7,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 import os
 import config
-from config import DIMENSIONS as dimensions
+from config import DIMENSIONS
 from pipeline_api import Progress, StageResult
 
 STAGE = "preprocess"
 
 
-def run(progress_cb=None, cancel_event=None, dimensions_=None):
+def run(progress_cb=None, cancel_event=None, dimensions=None):
     """Reshape the raw population trajectories into the clustering input.
 
     Memory note: one dimension's frames are concatenated in one go, which is
     the heaviest allocation in the pipeline. Kept as-is deliberately - the
     concat is what gives the groupby below a single pass per problem.
     """
-    dims = list(dimensions_ if dimensions_ is not None else dimensions)
+    dims = list(dimensions if dimensions is not None else DIMENSIONS)
     base = config.OUTPUTS_DIR
     processed_dir = config.PROCESSED_DIR
     progress = Progress(progress_cb, cancel_event)

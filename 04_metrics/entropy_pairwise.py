@@ -11,7 +11,7 @@ import os
 from itertools import combinations
 import config
 from config import (
-    ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES,
+    ALGORITHMS_OF_INTEREST, DIMENSIONS,
     ENTROPY_DATA_DIR as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
 )
 from pipeline_api import Progress, StageResult

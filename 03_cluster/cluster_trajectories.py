@@ -57,7 +57,11 @@ def determine_number_of_clusters(X):
     Use the elbow method to determine the optimal number of clusters for KMeans.
 
     Candidate cluster counts are powers of 2 from 2^2=4 up to 2^9=512,
-    giving a broad, geometrically-spaced search space.
+    giving a broad, geometrically-spaced search space, capped so no
+    candidate ever asks KMeans for more clusters than there are samples
+    (sklearn raises for that, and a narrowly-scoped GUI run's per-file
+    sample count can be far smaller than the full benchmark sweep this
+    method was tuned against).
 
     Parameters
     ----------
@@ -66,22 +70,38 @@ def determine_number_of_clusters(X):
 
     Returns
     -------
-    int or None
-        The elbow value (optimal k) detected by KElbowVisualizer,
-        or None if no clear elbow is found.
+    int
+        The elbow value (optimal k) detected by KElbowVisualizer, or a
+        k ~= sqrt(n_samples / 2) fallback (rounded to the nearest candidate)
+        when no clear elbow is found - fit_kmeans handed this straight to
+        KMeans(n_clusters=...) with no such fallback used to crash the
+        entire clustering stage over one file whenever KElbowVisualizer
+        couldn't find a knee, which happens more often on a small or
+        unusually uniform dataset than it does on the full sweep.
     """
     # random_state/n_init pinned so the elbow picks the same k on a re-run -
     # an unseeded KMeans here makes the chosen k itself nondeterministic.
     model = KMeans(random_state=CLUSTERING_SEED, n_init="auto")
 
-    # Candidate k values: [4, 8, 16, 32, 64, 128, 256, 512]
-    cluster_options = [int(math.pow(2, x)) for x in range(2, 10)]
+    n_samples = len(X)
+    cluster_options = [k for k in (int(math.pow(2, x)) for x in range(2, 10))
+                        if k <= n_samples]
+    if not cluster_options:
+        # Fewer samples than even the smallest candidate (4) - too little
+        # data to cluster meaningfully either way; cap at what exists.
+        return max(1, min(4, n_samples))
 
     visualizer = KElbowVisualizer(model, k=cluster_options)
     visualizer.fit(X)
     #visualizer.show()
 
-    return visualizer.elbow_value_
+    if visualizer.elbow_value_ is not None:
+        return visualizer.elbow_value_
+
+    fallback = min(cluster_options, key=lambda k: abs(k - math.sqrt(n_samples / 2)))
+    print(f"  [warn] no clear elbow among k={cluster_options} for this file "
+          f"({n_samples} samples) - falling back to k={fallback} (~sqrt(n/2) heuristic)")
+    return fallback
 
 
 

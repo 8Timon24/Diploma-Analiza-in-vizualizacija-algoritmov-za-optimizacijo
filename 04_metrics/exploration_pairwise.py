@@ -11,7 +11,7 @@ import os
 from itertools import combinations
 import config
 from config import (
-    ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES,
+    ALGORITHMS_OF_INTEREST, DIMENSIONS,
     OUTPUTS_DIR as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
 )
 from pipeline_api import Progress, StageResult
@@ -31,6 +31,22 @@ def load_exploration(d, alg, f, i, seed):
         return None
     df = pd.read_csv(path).sort_values('iteration')
     return df['exploration'].to_numpy()
+
+
+def discover_problems(d):
+    """(function, instance) pairs actually present for this dimension,
+    across every algorithm.
+
+    Not assumed from config.FUNCTIONS x config.INSTANCES: the Setup tab's
+    function/instance checklists let a GUI run cover any subset, and
+    load_exploration's missing-file guard only stops a crash - it doesn't
+    stop this stage from wasting every (f, i) outside what was actually
+    generated, nor pick up one outside config's default range that was.
+    """
+    problems = set()
+    for alg in ALGORITHMS_OF_INTEREST:
+        problems.update(config.discover_problem_dirs(f"{config.OUTPUTS_DIR}/dim_{d}/{alg}"))
+    return sorted(problems)
 
 
 def discover_runs(d, f, i):
@@ -64,42 +80,40 @@ def run(progress_cb=None, cancel_event=None, dimensions=None):
 
     for d in dims:
         os.makedirs(f'{output_dir}/exploration/dim_{d}', exist_ok=True)
-        progress.begin(len(FUNCTIONS) * len(INSTANCES), f"exploration dim {d}")
+        problems = discover_problems(d)
+        progress.begin(len(problems), f"exploration dim {d}")
 
-        for f in FUNCTIONS:
-            if progress.cancelled:
+        for f, i in problems:
+            if not progress.item(f"F{f}_I{i}"):
                 break
-            for i in INSTANCES:
-                if not progress.item(f"F{f}_I{i}"):
-                    break
-                rows = []  # (Alg1, Alg2, F, I) run_id, mean_exploration_difference
+            rows = []  # (Alg1, Alg2, F, I) run_id, mean_exploration_difference
 
-                for r in discover_runs(d, f, i):
-                    # cache each algorithm's exploration curve for this (f, i, r)
-                    # so we don't re-read the same file for every pair it appears in
-                    curves = {}
-                    for alg in ALGORITHMS_OF_INTEREST:
-                        curves[alg] = load_exploration(d, alg, f, i, r)
+            for r in discover_runs(d, f, i):
+                # cache each algorithm's exploration curve for this (f, i, r)
+                # so we don't re-read the same file for every pair it appears in
+                curves = {}
+                for alg in ALGORITHMS_OF_INTEREST:
+                    curves[alg] = load_exploration(d, alg, f, i, r)
 
-                    for pair in algorithm_pairs:
-                        alg1, alg2 = pair
-                        e1 = curves[alg1]
-                        e2 = curves[alg2]
-                        if e1 is None or e2 is None:
-                            continue  # missing diversity file for one algorithm
-                        if len(e1) != len(e2) or len(e1) == 0:
-                            continue
+                for pair in algorithm_pairs:
+                    alg1, alg2 = pair
+                    e1 = curves[alg1]
+                    e2 = curves[alg2]
+                    if e1 is None or e2 is None:
+                        continue  # missing diversity file for one algorithm
+                    if len(e1) != len(e2) or len(e1) == 0:
+                        continue
 
-                        diff = (np.abs(e1 - e2).mean())/100.0
+                    diff = (np.abs(e1 - e2).mean())/100.0
 
-                        row = {"Algorithm1": alg1, "Algorithm2": alg2,
-                               "Function_id": f, "Instance_id": i, "Run_id": r,
-                               "Mean_exploration_difference": diff}
-                        rows.append(row)
+                    row = {"Algorithm1": alg1, "Algorithm2": alg2,
+                           "Function_id": f, "Instance_id": i, "Run_id": r,
+                           "Mean_exploration_difference": diff}
+                    rows.append(row)
 
-                result_frame = pd.DataFrame(rows)
-                result_frame.to_csv(f'{output_dir}/exploration/dim_{d}/F{f}_I{i}.csv', index=False)
-                result.written += 1
+            result_frame = pd.DataFrame(rows)
+            result_frame.to_csv(f'{output_dir}/exploration/dim_{d}/F{f}_I{i}.csv', index=False)
+            result.written += 1
 
         if progress.cancelled:
             result.cancelled = True

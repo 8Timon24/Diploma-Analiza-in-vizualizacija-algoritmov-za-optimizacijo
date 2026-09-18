@@ -10,7 +10,7 @@ import math
 import os
 import config
 from config import (
-    ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES,
+    ALGORITHMS_OF_INTEREST, DIMENSIONS,
     CLUSTER_DISTRIBUTIONS_LATEST as INPUT_DIR, ENTROPY_DATA_DIR,
 )
 from pipeline_api import Progress, StageResult
@@ -47,31 +47,35 @@ def compute_entropy(filepath, algorithms_of_interest=None):
     return pd.DataFrame(rows)
 
 
-def get_granular_entropy(input_dir, functions, instances, dimension,
+def get_granular_entropy(input_dir, dimension,
                          algorithms_of_interest=None, progress=None):
     """
-    Collects FULLY LOSSLESS per-iteration entropy across all
-    (function, instance) files for one dimension - nothing averaged away.
-    One row per (algorithm, problem_id, instance_id, dimension, run,
-    iteration, entropy).
+    Collects FULLY LOSSLESS per-iteration entropy across every
+    (function, instance) file actually present in `input_dir` for one
+    dimension - nothing averaged away. One row per (algorithm, problem_id,
+    instance_id, dimension, run, iteration, entropy).
+
+    Discovers which F{f}_I{i}.csv files exist rather than assuming
+    config.FUNCTIONS x config.INSTANCES (see config.discover_problems): a
+    GUI run can cover any subset of BBOB's functions/instances, and
+    compute_entropy's pd.read_csv has no existence check, so the full cross
+    product crashed on the first (function, instance) pair narrower than
+    that.
     """
     if algorithms_of_interest is None:
         algorithms_of_interest = ALGORITHMS_OF_INTEREST
 
     all_rows = []
-    for F in functions:
-        if progress is not None and progress.cancelled:
-            break  # the inner break below only leaves the instance loop
-        for I in instances:
-            if progress is not None and not progress.item(f"F{F}_I{I}"):
-                break
-            problem_entropy = compute_entropy(f'{input_dir}/F{F}_I{I}.csv', algorithms_of_interest)
-            if problem_entropy.empty:
-                continue
-            problem_entropy['problem_id'] = F
-            problem_entropy['instance_id'] = I
-            problem_entropy['dimension'] = dimension
-            all_rows.append(problem_entropy)
+    for F, I in config.discover_problems(input_dir):
+        if progress is not None and not progress.item(f"F{F}_I{I}"):
+            break
+        problem_entropy = compute_entropy(f'{input_dir}/F{F}_I{I}.csv', algorithms_of_interest)
+        if problem_entropy.empty:
+            continue
+        problem_entropy['problem_id'] = F
+        problem_entropy['instance_id'] = I
+        problem_entropy['dimension'] = dimension
+        all_rows.append(problem_entropy)
 
     if not all_rows:
         return pd.DataFrame()
@@ -153,11 +157,12 @@ def run(progress_cb=None, cancel_event=None, dimensions=None):
     for d in dims:
         input_dir = f'{config.CLUSTER_DISTRIBUTIONS_LATEST}/dim_{d}'
         print(f"Computing entropy for dim={d}...")
-        progress.begin(len(FUNCTIONS) * len(INSTANCES), f"entropy dim {d}")
+        problems = config.discover_problems(input_dir)
+        progress.begin(len(problems), f"entropy dim {d}")
         # Fully lossless per-iteration table (one row per algorithm/problem/
         # instance/dimension/run/iteration). Base table for any later
         # aggregation or pairwise analysis.
-        granular = get_granular_entropy(input_dir, FUNCTIONS, INSTANCES, d,
+        granular = get_granular_entropy(input_dir, d,
                                         ALGORITHMS_OF_INTEREST, progress=progress)
         if progress.cancelled:
             result.cancelled = True

@@ -151,6 +151,47 @@ def discover_seeds(directory, prefix):
     return sorted(seeds)
 
 
+def discover_problems(directory):
+    """(function_id, instance_id) pairs actually present as F{f}_I{i}.csv
+    files in `directory`, as ints.
+
+    Same reasoning as discover_seeds/discover_dimensions: FUNCTIONS (24) x
+    INSTANCES (5) is BBOB's full default sweep, not a guarantee about what a
+    given run covers - the Setup tab's function/instance checklists let a
+    GUI run pick any subset, and a stage that assumes the full cross product
+    while reading one CSV per (function, instance) crashes on
+    pd.read_csv(FileNotFoundError) the moment it's narrower than that.
+    """
+    pattern = re.compile(r"^F(\d+)_I(\d+)\.csv$")
+    problems = set()
+    if os.path.isdir(directory):
+        for name in os.listdir(directory):
+            match = pattern.match(name)
+            if match:
+                problems.add((int(match.group(1)), int(match.group(2))))
+    return sorted(problems)
+
+
+def discover_problem_dirs(directory):
+    """(function_id, instance_id) pairs actually present as {f}_{i}
+    subdirectories of `directory`.
+
+    This is the raw benchmark output's own naming (no F/I prefix - see
+    helper_functions.run_benchmarks' directory=
+    f"{{out_dir}}/dim_{{d}}/{{name}}/{{problem.id_function}}_{{problem.id_instance}}"),
+    distinct from discover_problems' F{f}_I{i}.csv filename convention that
+    later clustering/metric stages write instead.
+    """
+    pattern = re.compile(r"^(\d+)_(\d+)$")
+    problems = set()
+    if os.path.isdir(directory):
+        for name in os.listdir(directory):
+            match = pattern.match(name)
+            if match and os.path.isdir(f"{directory}/{name}"):
+                problems.add((int(match.group(1)), int(match.group(2))))
+    return sorted(problems)
+
+
 def discover_dimensions(directory, fallback=None):
     """Dimensions actually present as dim_{d} subdirectories of `directory`.
 

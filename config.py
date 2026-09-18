@@ -25,6 +25,7 @@ variables are unset in normal use, so this never changes real behavior.
 
 import json
 import os
+import re
 from pathlib import Path
 
 _root_override = os.environ.get("PIPELINE_TEST_ROOT")
@@ -124,6 +125,30 @@ def clustering_dir(method):
     if method == "dbscan_adaptive":
         return f"{CLUSTERING_DBSCAN_DIR}/adaptive/"
     raise ValueError(f"unknown clustering method {method!r}; expected one of {CLUSTERING_METHODS}")
+
+
+def discover_seeds(directory, prefix):
+    """Seed values actually present as `{prefix}_{seed}.csv` files in `directory`.
+
+    SEEDS is what a fresh benchmark sweep defaults to, not a guarantee about
+    what's on disk: a GUI run can use any seed via the Setup tab's add-a-seed
+    control (gui/panels/setup_panel.py), and re-running the CLI's own -s flag
+    with a narrower list produces the same thing. A stage that assumes SEEDS
+    while reading per-seed files by name either crashes on one that was never
+    generated or silently ignores one outside that list that was - this is
+    the fix for both, used in place of `for seed in SEEDS` wherever a stage
+    reads outputs/ files named this way (harvest_results.py, preprocess_data.py,
+    build_scalars.py's diversity_scalars).
+    """
+    if not os.path.isdir(directory):
+        return []
+    pattern = re.compile(rf"^{re.escape(prefix)}_(\d+)\.csv$")
+    seeds = set()
+    for name in os.listdir(directory):
+        match = pattern.match(name)
+        if match:
+            seeds.add(int(match.group(1)))
+    return sorted(seeds)
 
 
 def normalize_keys(df):

@@ -12,7 +12,7 @@ from itertools import combinations
 from sklearn.metrics.pairwise import cosine_similarity
 import config
 from config import (
-    ALGORITHMS_OF_INTEREST, DIMENSIONS, SEEDS as RUNS,
+    ALGORITHMS_OF_INTEREST, DIMENSIONS,
     CLUSTER_DISTRIBUTIONS_LATEST as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
 )
 from pipeline_api import Progress, StageResult
@@ -59,7 +59,9 @@ def run(progress_cb=None, cancel_event=None, dimensions=None):
             df = pd.read_csv(f'{input_dir}/{file}', index_col=[0, 1, 2])
 
             rows = []
-            for r in RUNS:
+            # Runs actually present in this file's "run" index level, not
+            # config.SEEDS: a GUI run (or a narrower -s) can use any seed.
+            for r in sorted(df.index.get_level_values(1).unique()):
                 for pair in algorithm_pairs:
                     alg1, alg2 = pair
                     try:

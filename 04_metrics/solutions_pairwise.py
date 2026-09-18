@@ -11,7 +11,7 @@ import os
 from itertools import combinations
 import config
 from config import (
-    ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES, SEEDS as RUNS,
+    ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES,
     OUTPUTS_DIR as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
 )
 from pipeline_api import Progress, StageResult
@@ -44,16 +44,23 @@ def run(progress_cb=None, cancel_event=None, dimensions=None):
                 return result
             rows_location = []  # (Alg1, Alg2, F, I) run_id, metric
             rows_fitness = []
-            for r in RUNS:
+            # Seeds actually present for this problem, not config.SEEDS: a
+            # GUI run (or a narrower -s) can use any seed.
+            for r in sorted(tmp['seed'].unique()):
                 run_data = tmp[tmp['seed'] == r]
                 for pair in algorithm_pairs:
                     alg1, alg2 = pair
 
-                    loc_1 = np.array(run_data[run_data['algorithm']==alg1][cols])
-                    loc_2 = np.array(run_data[run_data['algorithm']==alg2][cols])
+                    rows_1 = run_data[run_data['algorithm']==alg1]
+                    rows_2 = run_data[run_data['algorithm']==alg2]
+                    if len(rows_1) != 1 or len(rows_2) != 1:
+                        continue  # one algorithm missing this run for this problem
+
+                    loc_1 = np.array(rows_1[cols])
+                    loc_2 = np.array(rows_2[cols])
                     loc_diff = np.linalg.norm(loc_1 - loc_2)
-                    fit_1 = run_data[run_data['algorithm']==alg1]['fitness'].item()
-                    fit_2 = run_data[run_data['algorithm']==alg2]['fitness'].item()
+                    fit_1 = rows_1['fitness'].item()
+                    fit_2 = rows_2['fitness'].item()
                     fit_diff = abs(fit_1-fit_2)
                     row_loc = {"Algorithm1": alg1, "Algorithm2":alg2, "Function_id": f, "Instance_id": i, "Run_id": r, "Location_difference": loc_diff}
                     row_fit = {"Algorithm1": alg1, "Algorithm2":alg2, "Function_id": f, "Instance_id": i, "Run_id": r, "Fitness_difference": fit_diff}

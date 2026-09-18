@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 import os
 import config
-from config import DIMENSIONS as dimensions, SEEDS
+from config import DIMENSIONS as dimensions
 from pipeline_api import Progress, StageResult
 
 STAGE = "preprocess"
@@ -42,12 +42,13 @@ def run(progress_cb=None, cancel_event=None, dimensions_=None):
             print(f'Preprocessing algorithm {algorithm} in dimension {d}')
             for problem_folder in os.listdir(f'{base_d}/{algorithm}'):
                 problem_id, instance_id = problem_folder.split('_')
-                # config.SEEDS rather than a literal [1..5]: the sweep is
-                # configurable and the smoke test runs a single seed.
-                for seed in SEEDS:
-                    path = f'{base_d}/{algorithm}/{problem_folder}/trajectory_{seed}.csv'
-                    if not os.path.isfile(path):
-                        continue
+                problem_dir = f'{base_d}/{algorithm}/{problem_folder}'
+                # Discovered per problem folder rather than assumed from
+                # config.SEEDS: a GUI run (or a narrower -s) can produce any
+                # seed, and this must neither skip one outside SEEDS nor
+                # break on one from SEEDS that was never generated.
+                for seed in config.discover_seeds(problem_dir, "trajectory"):
+                    path = f'{problem_dir}/trajectory_{seed}.csv'
                     df = pd.read_csv(path)
                     column_map = {f'x{i+1}':f'x{i}' for i in range(d)}
                     column_map['fitness'] = 'raw_y'

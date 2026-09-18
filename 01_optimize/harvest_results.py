@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 import os
 import config
-from config import OUTPUTS_DIR, DIMENSIONS, SEEDS
+from config import DIMENSIONS
 from pipeline_api import Progress, StageResult
 
 STAGE = "harvest_results"
@@ -51,9 +51,10 @@ def run(progress_cb=None, cancel_event=None, dimensions=None):
                 pf = problem_folder
                 parts = pf.replace('F', '').replace('I', '').split('_')
                 problem_id, instance_id = int(parts[0]), int(parts[1])
+                problem_dir = f"{alg_dir}/{pf}"
 
-                for seed in SEEDS:
-                    path = f"{alg_dir}/{pf}/gbest_trajectory_{seed}.csv"
+                for seed in config.discover_seeds(problem_dir, "gbest_trajectory"):
+                    path = f"{problem_dir}/gbest_trajectory_{seed}.csv"
                     coord_cols, best = best_row_from_gbest(path)
                     coord_cols_ref = coord_cols
                     row = {

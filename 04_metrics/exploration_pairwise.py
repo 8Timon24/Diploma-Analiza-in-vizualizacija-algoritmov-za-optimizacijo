@@ -11,7 +11,7 @@ import os
 from itertools import combinations
 import config
 from config import (
-    ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES, SEEDS as RUNS,
+    ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES,
     OUTPUTS_DIR as INPUT_DIR, METRICS_DIR as OUTPUT_DIR,
 )
 from pipeline_api import Progress, StageResult
@@ -31,6 +31,21 @@ def load_exploration(d, alg, f, i, seed):
         return None
     df = pd.read_csv(path).sort_values('iteration')
     return df['exploration'].to_numpy()
+
+
+def discover_runs(d, f, i):
+    """Seeds actually present for this problem, across every algorithm.
+
+    Not assumed from config.SEEDS: a GUI run (or a narrower -s) can use any
+    seed, and iterating a fixed list either produces nothing but skipped
+    pairs for a seed that was never generated or silently never looks at
+    one that was.
+    """
+    seeds = set()
+    for alg in ALGORITHMS_OF_INTEREST:
+        problem_dir = f"{config.OUTPUTS_DIR}/dim_{d}/{alg}/{f}_{i}"
+        seeds.update(config.discover_seeds(problem_dir, "diversity"))
+    return sorted(seeds)
 
 
 def run(progress_cb=None, cancel_event=None, dimensions=None):
@@ -59,7 +74,7 @@ def run(progress_cb=None, cancel_event=None, dimensions=None):
                     break
                 rows = []  # (Alg1, Alg2, F, I) run_id, mean_exploration_difference
 
-                for r in RUNS:
+                for r in discover_runs(d, f, i):
                     # cache each algorithm's exploration curve for this (f, i, r)
                     # so we don't re-read the same file for every pair it appears in
                     curves = {}

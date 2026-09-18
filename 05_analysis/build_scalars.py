@@ -15,7 +15,7 @@ import pandas as pd
 from tqdm import tqdm
 import config
 from config import (
-    ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES, SEEDS,
+    ALGORITHMS_OF_INTEREST, DIMENSIONS, FUNCTIONS, INSTANCES,
     ENTROPY_DATA_DIR, OUTPUTS_DIR, METRICS_DIR, SCALARS_CSV,
 )
 from pipeline_api import Progress, StageResult
@@ -59,15 +59,17 @@ def diversity_scalars(dimension):
     matches the 0-1 convention 04_metrics/exploration_pairwise.py uses.
     """
     rows = []
+    # Discovered per (alg, f, i) rather than crossed with config.SEEDS: a GUI
+    # run (or a narrower -s) can use any seed, and a fixed list either skips
+    # one that exists or wastes a stat() on one that was never generated.
     combos = [(alg, f, i, s)
               for alg in ALGORITHMS_OF_INTEREST
               for f in FUNCTIONS
               for i in INSTANCES
-              for s in SEEDS]
+              for s in config.discover_seeds(
+                  f"{config.OUTPUTS_DIR}/dim_{dimension}/{alg}/{f}_{i}", "diversity")]
     for alg, f, i, s in tqdm(combos, desc=f"diversity/dim_{dimension}", leave=False):
         path = f"{config.OUTPUTS_DIR}/dim_{dimension}/{alg}/{f}_{i}/diversity_{s}.csv"
-        if not os.path.isfile(path):
-            continue
         d = pd.read_csv(path)
         if d.empty:
             continue

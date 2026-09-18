@@ -21,10 +21,15 @@ cleanly and then fails at runtime if it is dropped.
    cocoex is a compiled C extension (two .so/.pyd files) plus data.
 
 4. The numbered stage folders on pathex, with their modules named explicitly.
-   gui/viz/registry.py imports entropy_plotting, spearman and
-   scalar_regression by name at runtime via importlib, because directories
-   called "04_metrics" are not importable as packages. Naming them here is
-   what puts them in the bundle.
+   gui/core/pipeline.py's Process tab imports every stage module by name at
+   runtime via importlib (harvest_results, preprocess_data,
+   cluster_trajectories, cluster_similarity, entropy*, cosine*, exploration_
+   pairwise, solutions_pairwise, merge_metrics, build_scalars, spearman), and
+   gui/viz/registry.py separately imports entropy_plotting and
+   scalar_regression the same way, because directories called "04_metrics"
+   are not importable as packages. Naming them here is what puts them in the
+   bundle - without it the Process tab starts fine and fails the moment a
+   stage runs.
 
 PyQt6 is excluded deliberately: it is installed in the dev venv as a
 matplotlib backend, and shipping two Qt bindings in one process is a
@@ -47,11 +52,25 @@ APP_NAME = "OptimizerTrajectoryExplorer"
 # -- 1. mealpy: invisible to static analysis (pkgutil.walk_packages)
 hidden = collect_submodules("mealpy")
 
-# -- 4. pipeline modules imported by name at runtime
+# -- 4. pipeline modules imported by name at runtime.
+# gui/core/pipeline.py's STAGES table names every module the Process tab can
+# run (importlib.import_module after putting its numbered folder on
+# sys.path); gui/viz/registry.py separately names entropy_plotting and
+# scalar_regression, the two figure scripts that are not pipeline steps.
+# "benchmark" (01_optimize/run_benchmarks.py) is deliberately absent: the GUI
+# drives it through helper_functions.run_benchmarks directly, never through
+# this module.
 hidden += [
     "config", "utils", "helper_functions",
-    "entropy", "entropy_plotting",          # 04_metrics
-    "spearman", "scalar_regression",        # 05_analysis
+    "harvest_results",                       # 01_optimize
+    "preprocess_data",                       # 02_preprocess
+    "cluster_trajectories", "cluster_similarity",   # 03_cluster
+    "entropy", "entropy_pairwise",           # 04_metrics
+    "cosine_pairwise", "cosine_columns_pairwise",
+    "exploration_pairwise", "solutions_pairwise",
+    "entropy_plotting",
+    "merge_metrics", "build_scalars",        # 05_analysis
+    "spearman", "scalar_regression",
 ]
 
 # -- 2. opfunu CEC support data
@@ -66,6 +85,9 @@ analysis = Analysis(
     [str(REPO_ROOT / "gui" / "__main__.py")],
     pathex=[
         str(REPO_ROOT),
+        str(REPO_ROOT / "01_optimize"),
+        str(REPO_ROOT / "02_preprocess"),
+        str(REPO_ROOT / "03_cluster"),
         str(REPO_ROOT / "04_metrics"),
         str(REPO_ROOT / "05_analysis"),
     ],
@@ -86,7 +108,10 @@ analysis = Analysis(
         "tkinter",
         "IPython", "jupyter", "notebook", "nbformat", "nbconvert",
         "pytest", "_pytest",
-        "pymoo", "yellowbrick", "kneed", "dtw",   # notebook-only extras
+        # yellowbrick and kneed are NOT excluded: cluster_trajectories.py
+        # imports both for its elbow-method k selection, and the Process tab
+        # runs that stage in a packaged app now, not just from a checkout.
+        "pymoo", "dtw",   # notebook-only extras
     ],
     noarchive=False,
 )

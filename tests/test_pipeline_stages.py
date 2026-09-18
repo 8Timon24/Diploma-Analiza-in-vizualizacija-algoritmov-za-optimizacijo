@@ -99,6 +99,18 @@ def test_stage_still_has_a_main_guard(name, script):
     assert "__main__" in text, f"{name} lost its __main__ guard"
 
 
+def _load_merge_metrics():
+    """merge_metrics.py imports tqdm at module scope, which CI's minimal
+    dependency set (pandas, numpy, pytest - see .github/workflows/tests.yml)
+    does not install. Same skip-on-ImportError pattern as
+    test_stage_exposes_a_callable_run, so this stays passing whether or not
+    the full requirements.txt is installed."""
+    try:
+        return _load(REPO_ROOT / "05_analysis" / "merge_metrics.py")
+    except ImportError as exc:
+        pytest.skip(f"merge_metrics: heavy dependency not installed ({exc})")
+
+
 def test_a_preset_cancel_event_stops_a_stage_before_it_works(tmp_path, monkeypatch):
     """The cancel contract, exercised on a real stage rather than on a mock."""
     pytest.importorskip("pandas")
@@ -109,7 +121,7 @@ def test_a_preset_cancel_event_stops_a_stage_before_it_works(tmp_path, monkeypat
     monkeypatch.setattr(config, "METRICS_DIR", str(metrics))
     monkeypatch.setattr(config, "MERGED_DIR", str(tmp_path / "merged"))
 
-    module = _load(REPO_ROOT / "05_analysis" / "merge_metrics.py")
+    module = _load_merge_metrics()
 
     already_cancelled = threading.Event()
     already_cancelled.set()
@@ -130,7 +142,7 @@ def test_progress_is_reported_with_a_total(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "METRICS_DIR", str(metrics))
     monkeypatch.setattr(config, "MERGED_DIR", str(tmp_path / "merged"))
 
-    module = _load(REPO_ROOT / "05_analysis" / "merge_metrics.py")
+    module = _load_merge_metrics()
 
     seen = []
     module.run(progress_cb=lambda done, total, label: seen.append((done, total)))

@@ -128,6 +128,7 @@ def test_compare_panel_builds_a_new_canvas_per_render():
 #   len(None) inside endResetModel().
 
 def test_set_frame_accepts_none():
+    pytest.importorskip("PySide6")
     from gui.models.dataframe_model import DataFrameModel
 
     model = DataFrameModel(pd.DataFrame({"a": [1, 2]}))
@@ -140,6 +141,7 @@ def test_set_frame_accepts_none():
 def test_sort_ignores_a_column_index_from_a_previous_file():
     """The view keeps its sort indicator across files, so a narrower frame
     can be asked to sort by a column that no longer exists."""
+    pytest.importorskip("PySide6")
     from gui.qt import Qt
     from gui.models.dataframe_model import DataFrameModel
 
@@ -150,6 +152,7 @@ def test_sort_ignores_a_column_index_from_a_previous_file():
 
 
 def test_sorting_is_not_cumulative_and_keeps_file_order_recoverable():
+    pytest.importorskip("PySide6")
     from gui.qt import Qt
     from gui.models.dataframe_model import DataFrameModel
 
@@ -162,6 +165,7 @@ def test_sorting_is_not_cumulative_and_keeps_file_order_recoverable():
 
 
 def test_missing_values_of_every_dtype_render_the_same():
+    pytest.importorskip("PySide6")
     import numpy as np
     from gui.qt import Qt
     from gui.models.dataframe_model import DataFrameModel

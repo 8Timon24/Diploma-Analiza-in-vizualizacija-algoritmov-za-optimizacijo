@@ -296,6 +296,7 @@ Windows runner - to build locally on your own Windows machine instead:
 
 ```bash
 pip install -r packaging/requirements-app.txt
+pip install --no-deps mealpy==3.0.3   # see the comment in that file for why
 pyinstaller packaging/gui.spec --noconfirm
 dist/OptimizerTrajectoryExplorer/OptimizerTrajectoryExplorer --self-test
 ```

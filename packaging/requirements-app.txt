@@ -10,7 +10,6 @@
 # win_amd64 wheels - hence the Python 3.10 pin in the build workflow.
 
 PySide6==6.11.2
-mealpy==3.0.3
 coco-experiment==2.8.2
 opfunu==1.0.4
 
@@ -27,3 +26,15 @@ seaborn==0.13.2
 fastparquet==2026.3.0
 
 pyinstaller==6.22.3
+
+# mealpy==3.0.3 is NOT listed above on purpose - it declares
+# numpy<=1.26.0,>=1.17.1 (still true of 3.0.3, the latest release on PyPI),
+# which conflicts with numpy==2.2.6 above and makes `pip install -r` on this
+# file fail outright with ResolutionImpossible. That upper bound is stale,
+# not a real incompatibility: `pip check` in the dev venv reports the exact
+# same conflict, and mealpy has been running real optimizations against
+# numpy 2.2.6 there the whole time (see gui/self_test.py's "a real
+# optimization run completes" check, which is the actual verification that
+# matters here, not the package metadata). Install it separately:
+#   pip install --no-deps mealpy==3.0.3
+# so pip never has to resolve its stale numpy pin against everything else.

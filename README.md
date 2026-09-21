@@ -1,6 +1,8 @@
 # Analysis and visualization of optimization algorithms via their search trajectories
 
-**Diploma thesis codebase** 
+**Diploma thesis codebase**
+
+*(Ta README je na voljo tudi v slovenščini: [README.sl.md](README.sl.md))*
 
 Metaheuristic optimizers are usually compared by *how good* their final solution is. This
 project compares them by *how they search*: it records the full population trajectory of
@@ -11,6 +13,20 @@ algorithms.
 The research question is which of those measures actually tell you different things.
 The final step computes the Spearman correlation between all metrics, separating the ones
 that are largely redundant from the ones that carry complementary information.
+
+## Contents
+
+- [What it measures](#what-it-measures)
+- [Two ways to use it](#two-ways-to-use-it)
+- [Requirements](#requirements)
+- [The command-line pipeline](#the-command-line-pipeline)
+- [Pipeline stages](#pipeline-stages)
+- [Outputs](#outputs)
+- [Regression over per-algorithm scalars](#regression-over-per-algorithm-scalars)
+- [Exploratory notebooks](#exploratory-notebooks)
+- [The desktop app](#the-desktop-app)
+- [Tests](#tests)
+- [A note on reproducibility](#a-note-on-reproducibility)
 
 ## What it measures
 

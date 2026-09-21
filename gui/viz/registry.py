@@ -164,11 +164,35 @@ def _render_entropy_curves(params):
     )
 
 
+def _require_entropy_rows(table, algorithms, dimension):
+    """Fail readably when none of the chosen algorithms has entropy data.
+
+    The pipeline plot functions filter by algorithm and then hand the empty
+    frame to seaborn, which answers "Number of rows must be a positive
+    integer, not 0" - a matplotlib grid-sizing error shown verbatim to
+    someone who simply picked an algorithm that was never benchmarked.
+    Guarded here rather than in 04_metrics/, so the thesis scripts are
+    untouched; this is the same place the clustermap's own guard lives.
+    """
+    if not algorithms:
+        return
+    have = set(table["algorithm"].unique())
+    missing = [a for a in algorithms if a not in have]
+    if len(missing) == len(algorithms):
+        raise ValueError(
+            f"No entropy data at dimension {dimension} for "
+            f"{', '.join(missing[:4])}{'...' if len(missing) > 4 else ''}. "
+            f"Benchmark them first, or pick algorithms that have been run."
+        )
+
+
 def _render_entropy_function_groups(params):
     plotting = _pipeline_module("04_metrics", "entropy_plotting")
+    table = _entropy_table(params["dimension"])
+    _require_entropy_rows(table, params["algorithms"], params["dimension"])
     return render_with(
         plotting.plot_entropy_by_function_group,
-        _entropy_table(params["dimension"]),
+        table,
         _UNUSED_OUTPUT_DIR,  # savefig is disabled while rendering
         plotting.FUNCTION_GROUPS,
         algorithms=params["algorithms"] or None,
@@ -195,6 +219,8 @@ def _render_entropy_overlay(params):
     if not functions:
         raise ValueError("Select at least one function")
     by_dim = {d: _entropy_table(d) for d in dims}
+    for dimension, table in by_dim.items():
+        _require_entropy_rows(table, params["algorithms"], dimension)
     return render_with(
         plotting.plot_entropy_overlay,
         by_dim,

@@ -380,10 +380,26 @@ class MainWindow(QtWidgets.QMainWindow):
                 return panel
         return None
 
+    def _stop_registry_loader(self):
+        """Let the startup mealpy discovery finish before the window dies.
+
+        It is a QThread parented to this window, so closing inside the ~1s it
+        takes destroyed it mid-run ("QThread: Destroyed while thread is still
+        running"). It only reads from mealpy, so waiting for it is safe and
+        short; nothing is left half-written either way.
+        """
+        loader, self._loader = getattr(self, "_loader", None), None
+        if loader is None:
+            return
+        if loader.isRunning():
+            loader.wait(5000)
+        loader.deleteLater()
+
     def closeEvent(self, event):
         """Don't let a job be killed mid-write by closing the window."""
         panel = self._busy_panel()
         if panel is None:
+            self._stop_registry_loader()
             event.accept()
             return
         answer = QtWidgets.QMessageBox.question(
@@ -403,6 +419,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage("Stopping at the next boundary...")
         panel.request_cancel()
         if panel.wait_for_exit(10000):
+            self._stop_registry_loader()
             event.accept()
             return
 

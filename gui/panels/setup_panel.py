@@ -321,10 +321,15 @@ class SetupPanel(QtWidgets.QWidget):
             source = problems_core.source_from_config(self.source_config())
             value = source.validate(dimensions[0])
         except problems_core.ExpressionError as exc:
+            # Qt caches the resolved stylesheet per widget, so a class change
+            # after the widget is shown does nothing until restyle() - the
+            # text changed here but the colour never did.
             self.custom_status.setProperty("class", "error")
+            theme.restyle(self.custom_status)
             self.custom_status.setText(str(exc))
             return False
         self.custom_status.setProperty("class", "success")
+        theme.restyle(self.custom_status)
         self.custom_status.setText(
             f"OK - f(centre) = {value:.6g} at dimension {dimensions[0]}"
         )

@@ -228,60 +228,83 @@ class TrajectoryPanel(QtWidgets.QWidget):
         instance = self.instance.currentData()
         run = self.run.currentData()
 
+        # The whole body is guarded, not just the read: drawing raised out of
+        # the clicked slot with the override cursor still pushed, which left
+        # the entire application stuck showing the busy cursor.
         QtWidgets.QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             frame, has_clusters = trajectory.load_positions(2, function, instance)
             selection = trajectory.select(frame, algorithms, run)
+
+            self._frame = frame
+            self._selection = selection
+            self._has_clusters = has_clusters
+            self._iterations = trajectory.iteration_range(selection)
+            self._function, self._instance, self._run = function, instance, run
+
+            self.colour_mode.setEnabled(has_clusters)
+            if not has_clusters and self.colour_mode.currentData() == "cluster":
+                # Signals blocked: this fires _rebuild_artists, which would
+                # draw a frame against the PREVIOUS problem's slider range
+                # only for _draw_background() below to throw it away.
+                self.colour_mode.blockSignals(True)
+                self.colour_mode.setCurrentIndex(0)
+                self.colour_mode.blockSignals(False)
+
+            self._draw_background()
+
+            low, high = self._iterations
+            self.slider.blockSignals(True)
+            self.slider.setMinimum(low)
+            self.slider.setMaximum(high)
+            self.slider.setValue(low)
+            self.slider.blockSignals(False)
+
+            # After the slider, so the first frame drawn is this problem's.
+            self._rebuild_artists()
+            self._set_playback_enabled(True)
+            self._draw_current()
         except Exception as exc:
-            QtWidgets.QApplication.restoreOverrideCursor()
             self._fail(str(exc))
             return
-
-        self._frame = frame
-        self._selection = selection
-        self._has_clusters = has_clusters
-        self._iterations = trajectory.iteration_range(selection)
-        self._function, self._instance, self._run = function, instance, run
-
-        self.colour_mode.setEnabled(has_clusters)
-        if not has_clusters and self.colour_mode.currentData() == "cluster":
-            self.colour_mode.setCurrentIndex(0)
-
-        self._draw_background()
-        self._rebuild_artists()
-
-        low, high = self._iterations
-        self.slider.blockSignals(True)
-        self.slider.setMinimum(low)
-        self.slider.setMaximum(high)
-        self.slider.setValue(low)
-        self.slider.blockSignals(False)
-        self._set_playback_enabled(True)
-        self._draw_current()
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
 
         note = f"{len(selection):,} points, iterations {low}-{high}"
         if not has_clusters:
             note += " - no clustering output, so cluster colouring is unavailable"
         self.status.setText(note)
-        QtWidgets.QApplication.restoreOverrideCursor()
+
+    def _discard_loaded(self):
+        """Clear the axes and forget every artist that was on them.
+
+        axes.clear() detaches the artists but leaves their _remove_method
+        None, so a later _rebuild_artists() calling artist.remove() raises
+        NotImplementedError("cannot remove artist") straight out of the
+        colour-mode slot. Dropping the references here is what makes the
+        rebuild a no-op instead. _selection must go too, or _update_frame
+        keeps repainting - and retitling - the previous problem.
+        """
+        self.stop()
+        self._set_playback_enabled(False)
+        self._frame = None
+        self._selection = None
+        self._scatters = {}
+        self._trail = None
+        self._cluster_scatter = None
+        self.axes.clear()
 
     def reset_view(self):
         """Drop whatever was loaded: it came from a different results tree."""
-        self.stop()
-        self._frame = None
-        self._selection = None
-        self._set_playback_enabled(False)
-        self.axes.clear()
+        self._discard_loaded()
         self.axes.set_title("Choose a problem and press Load")
         figure_theme.apply_to(self.figure)
         self.canvas.draw_idle()
         self.status.setText("Results folder changed - press Load.")
 
     def _fail(self, message):
-        self.stop()
-        self._set_playback_enabled(False)
+        self._discard_loaded()
         self.status.setText(message)
-        self.axes.clear()
         self.axes.set_title("Could not load")
         self.axes.text(0.5, 0.5, message, ha="center", va="center", wrap=True,
                        transform=self.axes.transAxes, fontsize=9)

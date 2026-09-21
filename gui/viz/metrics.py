@@ -55,9 +55,11 @@ def metric_table(params):
     table["pair"] = table["Algorithm1"] + "  /  " + table["Algorithm2"]
     table = table.set_index("pair")[[m for m in METRICS if m in table.columns]]
 
+    # exploration arrives already on a 0-1 scale: exploration_pairwise.py
+    # divides the percentage-point difference by 100 when it writes the
+    # metric. Dividing again here put the whole column at ~0.003, so every
+    # cell annotated "0.00" and the column carried no information at all.
     scaled = table.copy()
-    if "exploration" in scaled:
-        scaled["exploration"] = scaled["exploration"] / 100.0
     for metric in UNBOUNDED:
         if metric not in scaled:
             continue
@@ -80,8 +82,16 @@ def metric_table(params):
 
 
 def _distance_matrix(means, metric, algorithms):
+    """Pairwise distances, with NaN for pairs the merged table does not have.
+
+    Starting from zeros made an uncomputed pair indistinguishable from two
+    identical algorithms - linkage merged them at height 0, so an algorithm
+    with no data looked like a perfect twin of whatever it was next to. NaN
+    is what data.pairwise_matrix uses for the same situation, and it is what
+    the guard in metric_dendrograms is written against.
+    """
     matrix = pd.DataFrame(
-        np.zeros((len(algorithms), len(algorithms))),
+        np.full((len(algorithms), len(algorithms)), np.nan),
         index=algorithms, columns=algorithms,
     )
     for _, row in means.iterrows():
@@ -89,6 +99,8 @@ def _distance_matrix(means, metric, algorithms):
         if first in matrix.index and second in matrix.columns:
             matrix.loc[first, second] = row[metric]
             matrix.loc[second, first] = row[metric]
+    for algorithm in algorithms:
+        matrix.loc[algorithm, algorithm] = 0.0
     return matrix
 
 
@@ -112,11 +124,18 @@ def metric_dendrograms(params):
     figure = Figure(figsize=(6.5 * columns, 6 * rows), layout="constrained")
     axes_list = np.atleast_1d(figure.subplots(rows, columns)).flatten()
 
+    substituted = False
     for axes, metric in zip(axes_list, available):
         matrix = _distance_matrix(means, metric, algorithms).to_numpy(dtype=float)
         np.fill_diagonal(matrix, 0.0)
         matrix = (matrix + matrix.T) / 2.0        # enforce exact symmetry
+        # A pair the merged table does not have arrives as NaN, which linkage
+        # cannot take. Treating it as maximally distant keeps the missing
+        # algorithm out on its own branch rather than fusing it to a
+        # neighbour, but it is still a substitution - so the figure says so
+        # below instead of quietly showing an invented tree.
         if np.isnan(matrix).any():
+            substituted = True
             matrix = np.nan_to_num(matrix, nan=np.nanmax(matrix) if
                                    np.isfinite(matrix).any() else 1.0)
         linkage_matrix = linkage(squareform(matrix, checks=False), method="average")
@@ -138,10 +157,13 @@ def metric_dendrograms(params):
         title="mealpy family", loc="lower center", ncol=min(len(used), 5),
         fontsize=9, frameon=False,
     )
-    figure.suptitle(
-        f"Algorithm clustering under each metric (dim {params['dimension']})",
-        fontsize=14,
-    )
+    title = f"Algorithm clustering under each metric (dim {params['dimension']})"
+    if substituted:
+        title += (
+            "\nSome pairs are missing from the merged table and were treated "
+            "as maximally distant"
+        )
+    figure.suptitle(title, fontsize=14)
     return figure
 
 

@@ -23,6 +23,7 @@ from matplotlib.figure import Figure
 
 from gui import theme
 from gui.panels import layout as panel_layout
+from gui.panels.job_panel import JobPanel
 from gui.qt import QtWidgets, Qt, Signal
 from gui.core import results_root
 from gui.core.runner import BenchmarkRunner, finalise_run
@@ -39,12 +40,14 @@ REDRAW_INTERVAL_SECONDS = 0.25
 MAX_TRACKED_PROBLEMS = 40
 
 
-class RunPanel(QtWidgets.QWidget):
+class RunPanel(JobPanel):
     runFinished = Signal(dict)
+
+    #: what the main window calls this job when it has to talk about it
+    job_noun = "benchmark run"
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._runner = None
         self._spec = None
         self._run_dir = None
         self._started = None
@@ -101,10 +104,10 @@ class RunPanel(QtWidgets.QWidget):
         layout.addWidget(splitter, 1)
 
     # -- lifecycle -------------------------------------------------------
-
-    @property
-    def is_running(self):
-        return self._runner is not None and self._runner.isRunning()
+    # is_running / _release_runner / wait_for_exit / _append come from
+    # JobPanel. They used to be copied into this file verbatim, and that
+    # copy is what let job_noun go missing: the main window asks every busy
+    # panel for it while building the "quit anyway?" prompt.
 
     def start(self, spec, run_dir, out_dir):
         if self.is_running:
@@ -127,12 +130,12 @@ class RunPanel(QtWidgets.QWidget):
         self.status.setText("Starting...")
         self.cancel_button.setEnabled(True)
 
-        self._runner = BenchmarkRunner(spec, out_dir, parent=self)
-        self._runner.progressed.connect(self._on_progress)
-        self._runner.message.connect(self._append)
-        self._runner.completed.connect(self._on_completed)
-        self._runner.failed.connect(self._on_failed)
-        self._runner.start()
+        runner = self._adopt_runner(BenchmarkRunner(spec, out_dir, parent=self))
+        runner.progressed.connect(self._on_progress)
+        runner.message.connect(self._append)
+        runner.completed.connect(self._on_completed)
+        runner.failed.connect(self._on_failed)
+        runner.start()
         return True
 
     def _cancel(self):
@@ -296,27 +299,15 @@ class RunPanel(QtWidgets.QWidget):
              "seconds": time.time() - self._started, "error": message}
         )
 
-    def _release_runner(self):
-        """Drop the finished worker and let Qt destroy its C++ side.
-
-        The thread is parented to this panel, so without deleteLater() every
-        run leaves a finished QThread attached to it for the life of the app.
-        """
-        runner, self._runner = self._runner, None
-        if runner is not None:
-            runner.deleteLater()
-
     # -- public API for the main window ----------------------------------
 
     def request_cancel(self):
-        """Ask the running sweep to stop at the next run boundary."""
-        self._cancel()
+        """Ask the running sweep to stop at the next run boundary.
 
-    def wait_for_exit(self, milliseconds):
-        """Block until the worker has actually finished. False on timeout."""
-        if self._runner is None:
-            return True
-        return self._runner.wait(milliseconds)
+        Overrides JobPanel's plain cancel() so the header explains that the
+        sweep stops at the next run boundary, not immediately.
+        """
+        self._cancel()
 
     def _append(self, text):
         self.log.appendPlainText(text)

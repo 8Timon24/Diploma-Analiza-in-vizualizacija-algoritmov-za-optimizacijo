@@ -185,9 +185,19 @@ class VizPanel(QtWidgets.QWidget):
         Export used to stay enabled here, so it would happily save a figure
         that was rendered from different parameters than the ones displayed.
         """
-        if self._figure is not None:
-            self.export_button.setEnabled(False)
-            self.status.setText("Parameters changed - press Render to update.")
+        if self._figure is None:
+            return
+        self.export_button.setEnabled(False)
+        self.status.setProperty("class", "hint")
+        theme.restyle(self.status)
+        self.status.setText("Parameters changed - press Render to update.")
+        # _clear_figure_area unparents self.status to keep it alive across
+        # renders, and _show_figure does not put it back - so this message
+        # was being written to a hidden, parentless widget and could never
+        # be read. Show it above the stale figure instead.
+        if self.status.parent() is None:
+            self.figure_layout.insertWidget(0, self.status)
+        self.status.show()
 
     def _clear_form(self):
         while self.form.rowCount():
@@ -214,6 +224,20 @@ class VizPanel(QtWidgets.QWidget):
                     index = widget.findData(default)
                     if index >= 0:
                         widget.setCurrentIndex(index)
+
+            # Without this the figure was only ever marked stale when the
+            # CATALOG selection changed, so editing the form after a render
+            # left Export enabled on a figure built from other parameters -
+            # exactly what _mark_stale exists to prevent.
+            # Connected after the default is applied above, so building the
+            # form does not itself mark the figure stale. The lambdas drop
+            # each signal's argument; _mark_stale takes none.
+            if parameter.kind == "bool":
+                widget.toggled.connect(lambda *_: self._mark_stale())
+            elif parameter.kind == "multi":
+                widget.itemChanged.connect(lambda *_: self._mark_stale())
+            else:
+                widget.currentIndexChanged.connect(lambda *_: self._mark_stale())
 
             if parameter.help:
                 widget.setToolTip(parameter.help)

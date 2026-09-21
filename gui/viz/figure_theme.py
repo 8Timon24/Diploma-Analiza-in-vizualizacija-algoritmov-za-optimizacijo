@@ -127,6 +127,17 @@ def apply_to(figure, dark=None):
         axes.set_facecolor(face)
         for spine in axes.spines.values():
             spine.set_edgecolor(muted)
+        # Same rule as the title below: a tick label that was coloured on
+        # purpose keeps its colour. metrics.metric_dendrograms tints each
+        # leaf by mealpy family and ships a legend explaining it, so
+        # recolouring unconditionally left that legend describing colours
+        # no longer on the figure. The deliberate ones have to be read
+        # BEFORE tick_params, which resets every label colour at once.
+        tick_labels = list(axes.get_xticklabels()) + list(axes.get_yticklabels())
+        deliberate = [
+            (label, label.get_color()) for label in tick_labels
+            if not _is_default_colour(label.get_color())
+        ]
         axes.tick_params(colors=muted, labelcolor=text)
         axes.xaxis.label.set_color(text)
         axes.yaxis.label.set_color(text)
@@ -135,8 +146,9 @@ def apply_to(figure, dark=None):
         # most/least similar pair - and that meaning must survive.
         if axes.get_title() and _is_default_colour(axes.title.get_color()):
             axes.title.set_color(text)
-        for label in list(axes.get_xticklabels()) + list(axes.get_yticklabels()):
-            label.set_color(text)
+        for label, colour in deliberate:
+            label.set_color(colour)
+        for label in tick_labels:
             if label.get_fontsize() < MIN_FONT_SIZE:
                 label.set_fontsize(MIN_FONT_SIZE)
         for spine_axis in (axes.xaxis, axes.yaxis):

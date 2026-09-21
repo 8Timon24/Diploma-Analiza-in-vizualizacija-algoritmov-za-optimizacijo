@@ -157,6 +157,12 @@ the figures already in the thesis stay consistent with each other.
   the figure instead. If you add a Tier-1-style wrapper around a pipeline plot
   function, route it through `render_with()` or you will silently overwrite
   thesis figures on every click.
+  The patch has to be installed process-wide but is **scoped to the thread that
+  installed it** - every other thread keeps the real `savefig`. That matters
+  because the Process tab runs stages on a worker thread and `spearman.py`
+  writes a real PDF: a patch that suppressed unconditionally turned that write
+  into a silent no-op whenever someone rendered a figure at the same time, and
+  the stage still reported success. Keep the thread check if you touch it.
 
 ### Pointing the app at a different results tree
 

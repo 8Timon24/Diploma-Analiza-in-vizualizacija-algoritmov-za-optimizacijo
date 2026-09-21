@@ -49,6 +49,21 @@ def _draw_occupancy(axes, frame, labels, population, annotate, title):
     axes.set_ylabel("Iteration")
 
 
+def best_fitness_per_cluster(subset):
+    """Running best scaled fitness, per iteration, WITHIN each cluster.
+
+    The grouping on the running minimum is the whole point. A bare .cummin()
+    runs over the flattened (iteration, cluster) index, so one cluster's
+    minimum carries into the next and every line ends up tracing the same
+    global best - which is not what "per cluster" on the axis promises.
+    """
+    return (
+        subset.groupby(["iteration", "cluster"])["scaled_raw_y"].min()
+        .groupby(level="cluster").cummin()
+        .to_frame().reset_index()
+    )
+
+
 def cluster_occupancy(params):
     """Where one algorithm's population sits, cluster by cluster, over time."""
     dimension, function, instance = params["dimension"], params["function"], params["instance"]
@@ -78,10 +93,7 @@ def cluster_occupancy(params):
         subset = trajectories.query("algorithm == @algorithm and run == @run")
         if subset.empty:
             raise ValueError(f"No clustered trajectories for {algorithm}, run {run}.")
-        best = (
-            subset.groupby(["iteration", "cluster"])["scaled_raw_y"].min()
-            .cummin().to_frame().reset_index()
-        )
+        best = best_fitness_per_cluster(subset)
         # legend=False coloured every cluster and then said which was which
         # nowhere at all.
         sns.lineplot(data=best, x="iteration", y="scaled_raw_y", hue="cluster",
@@ -125,6 +137,36 @@ def cluster_occupancy_compare(params):
     return figure
 
 
+#: Similarity of an algorithm with itself. cluster_similarity.py skips the
+#: self-pairs, so this is supplied here rather than read from the file.
+SELF_SIMILARITY = 1.0
+
+
+def _fill_self_similarity(matrix):
+    """Put the diagonal back, and refuse to guess at anything else.
+
+    A NaN off the diagonal means that pair was never computed - on a partial
+    metrics tree, say. Filling it in would put an invented number into the
+    linkage, so it is reported instead.
+    """
+    values = matrix.to_numpy(dtype=float, copy=True)
+    np.fill_diagonal(values, SELF_SIMILARITY)
+    if np.isnan(values).any():
+        rows, columns = np.where(np.isnan(values))
+        missing = sorted({
+            f"{matrix.index[r]} / {matrix.columns[c]}"
+            for r, c in zip(rows, columns)
+        })
+        raise ValueError(
+            f"{len(missing)} algorithm pair(s) have no aggregate similarity "
+            f"for this dimension, so they cannot be clustered: "
+            f"{', '.join(missing[:4])}"
+            f"{'...' if len(missing) > 4 else ''}. "
+            f"Run 03_cluster/cluster_similarity.py, or deselect them."
+        )
+    return type(matrix)(values, index=matrix.index, columns=matrix.columns)
+
+
 def algorithm_similarity(params):
     """Algorithms clustered by their aggregate trajectory similarity.
 
@@ -139,7 +181,13 @@ def algorithm_similarity(params):
     present = [a for a in algorithms if a in matrix.index]
     if len(present) < 3:
         raise ValueError("Need at least 3 algorithms present in the similarity matrix.")
-    matrix = matrix.loc[present, present].fillna(0.0)
+    matrix = matrix.loc[present, present]
+    # cluster_similarity.py never compares an algorithm with itself, so the
+    # diagonal arrives all-NaN. This is a SIMILARITY matrix, so an algorithm
+    # is maximally similar to itself: filling it with 0.0 claimed the exact
+    # opposite, which both mis-coloured the diagonal and fed a wrong row
+    # vector to the linkage the dendrogram is built from.
+    matrix = _fill_self_similarity(matrix)
 
     families = {a: style.family_of(a) for a in present}
     colours = style.family_colours()

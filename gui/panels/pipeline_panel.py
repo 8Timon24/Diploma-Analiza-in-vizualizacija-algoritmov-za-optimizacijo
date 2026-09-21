@@ -346,6 +346,10 @@ class PipelinePanel(JobPanel):
         self.overall_progress.setValue(0)
         self.stage_progress.setRange(0, 1)
         self.stage_progress.setValue(0)
+        # _on_failed leaves the label styled as an error and nothing ever put
+        # it back, so one failed run rendered every later headline - including
+        # successful ones - in the danger colour for the rest of the session.
+        self._set_status_class("metric")
         self.status.setText("Starting...")
         self.cancel_button.setEnabled(True)
         self.run_button.setEnabled(False)
@@ -368,9 +372,16 @@ class PipelinePanel(JobPanel):
 
     # -- progress --------------------------------------------------------
 
+    def _set_status_class(self, name):
+        self.status.setProperty("class", name)
+        theme.restyle(self.status)
+
     def _on_stage_started(self, payload):
         self._stage_index = payload["index"]
-        self.overall_progress.setValue(payload["index"])
+        # index is 0-based; the bar's format is "stage %v of %m" and the
+        # label beside it already says index + 1, so the bar read "stage 0
+        # of 14" while the text next to it read "stage 1 of 14".
+        self.overall_progress.setValue(payload["index"] + 1)
         self.status.setText(
             f"{payload['label']}  -  stage {payload['index'] + 1} "
             f"of {payload['total']}"
@@ -397,6 +408,7 @@ class PipelinePanel(JobPanel):
         text = (f"Pipeline {state}: {len(summary['stages'])} stage(s), "
                 f"{summary['written']:,} file(s) written "
                 f"in {_duration(summary['seconds'])}")
+        self._set_status_class("warning" if summary["cancelled"] else "metric")
         self.status.setText(text)
         self._append("")
         self._append(text)
@@ -417,8 +429,7 @@ class PipelinePanel(JobPanel):
 
     def _on_failed(self, message):
         self.cancel_button.setEnabled(False)
-        self.status.setProperty("class", "error")
-        theme.restyle(self.status)
+        self._set_status_class("error")
         self.status.setText("Pipeline failed")
         self._append("")
         self._append(message)

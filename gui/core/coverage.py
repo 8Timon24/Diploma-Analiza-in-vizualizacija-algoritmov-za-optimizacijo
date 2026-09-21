@@ -243,6 +243,11 @@ def check_entropy(dimension, algorithms, functions):
 def check_entropy_multi(dimensions, algorithms, functions):
     """Same, across several dimensions at once (the overlay plot)."""
     combined = Coverage()
+    # Totalled across dimensions rather than copied from one of them: the
+    # per-dimension estimates were being dropped entirely, so this view was
+    # the only one that never showed a real cost.
+    runs, seconds = 0, 0.0
+    instances, seeds = len(config.INSTANCES), len(config.SEEDS)
     for dimension in dimensions or []:
         single = check_entropy(dimension, algorithms, functions)
         combined.gaps.extend(single.gaps)
@@ -258,8 +263,16 @@ def check_entropy_multi(dimensions, algorithms, functions):
         combined.wanted_dimensions = tuple(
             sorted(set(combined.wanted_dimensions) | set(single.wanted_dimensions))
         )
-    if combined.gaps and not combined.estimate:
-        combined.estimate = "see the steps below"
+        if single.gaps:
+            here = (max(len(single.wanted_algorithms), 1)
+                    * max(len(single.wanted_functions), 1) * instances * seeds)
+            runs += here
+            seconds += here * dimension * 0.5   # same model as _estimate
+    if combined.gaps:
+        combined.estimate = (
+            f"{runs:,} runs, roughly {_duration(seconds)} plus clustering"
+            if runs else "see the steps below"
+        )
     return combined
 
 

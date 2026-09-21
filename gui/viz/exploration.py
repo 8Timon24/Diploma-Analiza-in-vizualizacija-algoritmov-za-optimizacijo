@@ -105,6 +105,31 @@ def exploration_vs_exploitation(params):
     return figure
 
 
+def _require_comparable(matrix):
+    """Fail readably when a pair has no run that can be compared.
+
+    difference() yields NaN for a pair with no run of equal length - the
+    diversity files in a tree do not all cover the same number of iterations.
+    That NaN used to reach sns.clustermap, which answered with scipy's
+    "The condensed distance matrix must contain only finite values", shown
+    verbatim to the user. Say which algorithms are the problem instead.
+    """
+    values = matrix.to_numpy(dtype=float)
+    if not np.isnan(values).any():
+        return
+    rows, columns = np.where(np.isnan(values))
+    pairs = sorted({
+        " / ".join(sorted((matrix.index[r], matrix.columns[c])))
+        for r, c in zip(rows, columns)
+    })
+    raise ValueError(
+        f"{len(pairs)} algorithm pair(s) share no run with the same number "
+        f"of iterations, so their exploration curves cannot be compared: "
+        f"{', '.join(pairs[:4])}{'...' if len(pairs) > 4 else ''}. "
+        f"Select more runs, or deselect those algorithms."
+    )
+
+
 def exploration_difference_clustermap(params):
     """Pairwise mean |delta exploration %|, clustered.
 
@@ -131,6 +156,7 @@ def exploration_difference_clustermap(params):
         return float(np.mean(per_run)) if per_run else np.nan
 
     matrix = pairwise_matrix(algorithms, difference)
+    _require_comparable(matrix)
     size = max(9, len(algorithms) * 1.1)
 
     def draw():

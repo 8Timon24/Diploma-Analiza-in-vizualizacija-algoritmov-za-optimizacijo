@@ -15,6 +15,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+import threadpoolctl
 from utils import *
 from sklearn.cluster import KMeans, DBSCAN, OPTICS
 from sklearn.datasets import make_blobs
@@ -132,11 +133,24 @@ def fit_kmeans(X):
     cluster_centers : ndarray of shape (n_clusters, n_features)
         Coordinates of each cluster centroid.
     """
-    number_of_clusters = determine_number_of_clusters(X)
+    # scikit-learn's KMeans parallelises its Lloyd's-algorithm inner loop
+    # over OpenMP/BLAS threads. This stage runs on the Process tab's worker
+    # QThread (not the main thread), and there are documented cases of that
+    # combination hanging indefinitely on Windows specifically - the
+    # thread-pool machinery never finishes initialising when first spun up
+    # from a non-main thread, so every KMeans.fit() call in this file (the
+    # elbow search's repeated fits and the final fit both) blocks forever at
+    # 0% CPU with no exception to catch and nothing for Progress/cancel_event
+    # to see, since the block is inside a single C call. Limiting to one
+    # thread means that pool is never created in the first place; for the
+    # per-file sample counts this pipeline deals with, the slowdown from
+    # going single-threaded is not meaningful.
+    with threadpoolctl.threadpool_limits(limits=1):
+        number_of_clusters = determine_number_of_clusters(X)
 
-    model = KMeans(number_of_clusters, random_state=CLUSTERING_SEED, n_init="auto")
-    model.fit(X)
-    clusters = model.predict(X)
+        model = KMeans(number_of_clusters, random_state=CLUSTERING_SEED, n_init="auto")
+        model.fit(X)
+        clusters = model.predict(X)
 
     return clusters, model.cluster_centers_
 
